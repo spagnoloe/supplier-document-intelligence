@@ -115,6 +115,15 @@ class ConflictRecord(BaseModel):
     values: dict[int, object]  # line id → that line's value
 
 
+# SQL value for a column added since a database was created, for the rows it already holds.
+# Before reconciliation existed, a line's own verification outcome was its review status, and
+# every reason came from verification.
+_BACKFILLS = {
+    ("quotation_lines", "verification_status"): "review_status",
+    ("review_reasons", "origin"): "'verification'",
+}
+
+
 @contextmanager
 def connect(db_path: Path):
     with closing(sqlite3.connect(db_path, timeout=30)) as conn:
@@ -244,7 +253,8 @@ class Store:
 
 def _add_missing_columns(conn: sqlite3.Connection) -> None:
     """A database from an earlier schema gains the columns added since, so an existing
-    sdi.db keeps working; nothing is dropped or changed."""
+    sdi.db keeps working; nothing is dropped or changed. Existing rows get the column's
+    backfill value, so a column the code relies on is never left empty."""
     with closing(sqlite3.connect(":memory:")) as reference:
         reference.executescript(SCHEMA)
         tables = reference.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -253,6 +263,8 @@ def _add_missing_columns(conn: sqlite3.Connection) -> None:
             for _, column, column_type, *_ in reference.execute(f"PRAGMA table_info({table})"):
                 if column not in existing:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+                    if (backfill := _BACKFILLS.get((table, column))) is not None:
+                        conn.execute(f"UPDATE {table} SET {column} = {backfill}")
 
 
 def _insert_reason(

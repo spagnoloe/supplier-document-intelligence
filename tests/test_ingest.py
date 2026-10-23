@@ -189,26 +189,28 @@ def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, sto
     assert received.text is None
 
 
-def test_database_from_an_earlier_schema_gains_new_columns(db_path, write_source, read_model):
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "CREATE TABLE quotation_lines (id INTEGER PRIMARY KEY, quotation_id INTEGER, line_no"
-            " INTEGER, brand_name TEXT, active_ingredients TEXT, dosage_form TEXT, uom TEXT,"
-            " pack_size REAL, unit_price REAL, pack_price REAL, currency TEXT, discount_pct REAL,"
-            " quantity REAL, line_total REAL, price_tiers TEXT, revision_note TEXT, evidence TEXT,"
-            " review_status TEXT, field_verification TEXT)"
-        )
-    source = write_source("export.json", "{}")
-
-    ingest(
-        [source],
-        FakeExtractor({"export.json": make_quotation("Alpha")}),
-        InMemoryFxSource(),
-        Store(db_path),
+def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, read_model):
+    old, new = write_source("old.json", "{}"), write_source("new.json", "{}")
+    extractor = FakeExtractor(
+        {"old.json": make_quotation("Alpha"), "new.json": make_quotation("Beta")}
     )
+    ingest([old], extractor, InMemoryFxSource(), Store(db_path))
+    [before] = read_model.quotation_lines()
+    # Columns added after that database was created, dropped again to recreate it.
+    with sqlite3.connect(db_path) as conn:
+        for table, column in [
+            ("quotation_lines", "verification_status"),
+            ("quotation_lines", "headline_unit_price"),
+            ("review_reasons", "origin"),
+        ]:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
 
-    [line] = read_model.quotation_lines()
-    assert line.headline_unit_price == 0.1
+    ingest([new], extractor, InMemoryFxSource(), Store(db_path))
+
+    assert {s.status for s in read_model.document_statuses()} == {"processed"}
+    lines = {line.inns[0]: line for line in read_model.quotation_lines()}
+    assert lines["alpha"].review_status == before.review_status
+    assert lines["beta"].headline_unit_price == 0.1
 
 
 def test_multi_sheet_workbook_reaches_extractor_as_text_one_row_per_line(
