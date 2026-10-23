@@ -255,7 +255,7 @@ Line detail gives the Source to show for an image line, the image file or the sc
 
 **Price comparison:**
 - Groups lines from different Quotations by INN set + strengths + standardized dosage form, all exact. It uses the Product key Conflicts match on. A group needs lines from at least two Quotations. A Source that can't be linked counts as a Quotation of its own.
-- The key drops trailing salt and hydrate words from the INN ("tenofovir disoproxil fumarate" = "tenofovir disoproxil"). The schema asks for the INN without its salt, but on the sample run the model left one on, and the TLD triple didn't group. The stored INN stays as extracted.
+- The key drops trailing salt and hydrate words from the INN ("tenofovir disoproxil fumarate" = "tenofovir disoproxil"). The schema asks for the INN without its salt, but on the sample run the model left one on, and the TLD triple didn't group. A name made only of salt words ("magnesium sulfate") stays whole, so it never folds into another salt of the same cation. The stored INN stays as extracted.
 - A line with an unreadable INN, strength or dosage form isn't compared. Two lines missing the same part would share a key without being known to be the same Product.
 - Shows USD per UOM (before discount, tier 1) with each line's Incoterm and place. When the Incoterms differ it warns "not like-for-like", naming each Quotation's term. A Quotation that states no Incoterm also triggers the warning, since what its price includes is unknown. A different place under the same Incoterm doesn't trigger it.
 - Groups are stored next to Conflicts and replaced on every run. A comparison never adds a Review reason or changes a review status.

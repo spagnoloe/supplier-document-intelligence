@@ -227,12 +227,14 @@ def _product_key(line: LineView) -> str:
 
 
 def _moiety(inn: str | None) -> str:
-    """The INN without trailing salt or hydrate words, keeping at least one word: "sodium
-    chloride" becomes "sodium", not nothing."""
+    """The INN without trailing salt or hydrate words. A name made only of salt words
+    ("magnesium sulfate") is the product itself and stays whole, so it never folds into
+    another salt of the same cation."""
     words = _words(inn).split()
-    while len(words) > 1 and words[-1] in _SALT_WORDS:
-        words.pop()
-    return " ".join(words)
+    moiety = list(words)
+    while moiety and moiety[-1] in _SALT_WORDS:
+        moiety.pop()
+    return " ".join(moiety or words)
 
 
 def _supplier_key(supplier: str | None) -> str:

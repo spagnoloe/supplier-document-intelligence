@@ -293,3 +293,21 @@ def test_rerun_replaces_earlier_price_comparisons(write_source, store, read_mode
     ingest([b], FakeExtractor({"b.json": quotation(syrup, **other)}), InMemoryFxSource(), store)
 
     assert read_model.price_comparisons() == []
+
+
+def test_inorganic_salts_of_one_cation_are_different_products(write_source, store, read_model):
+    def salt(inn: str) -> QuotationLine:
+        return amoxicillin(name=inn, inn=inn, dosage_form="Solution for injection")
+
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(salt("magnesium sulfate")),
+            "b.json": quotation(
+                salt("magnesium chloride"), supplier="Other Pharma", quote_ref="OP-1"
+            ),
+        },
+    )
+
+    assert read_model.price_comparisons() == []
