@@ -9,6 +9,7 @@ it carries a revision. Every flag is a Review reason.
 
 import re
 from collections.abc import Iterable, Sequence
+from decimal import Decimal
 from enum import StrEnum
 from typing import Literal, get_args
 
@@ -217,6 +218,8 @@ def _verify_line(
         checks.present(field)
         if text is not None:
             _check_evidence(checks, field, value, evidence, text)
+        else:
+            _check_value_in_span(checks, field, value, evidence)
         _check_certainty(checks, field, evidence)
     _check_rules(checks, line, quotation)
     prices = derive_prices(line)
@@ -342,14 +345,37 @@ def _check_evidence(
     # entries (strengths, tiers) are rarely all in one span, so their numbers need only be
     # written somewhere in the Source; that still catches values the model computed.
     if isinstance(value, list):
-        written, where = text.numbers, "source text"
-    else:
-        written, where = numbers_in(" ".join(spans)), f"its evidence '{' / '.join(spans)}'"
+        if _number_missing(checks, field, value, text.numbers, "source text"):
+            return
+    elif _number_missing(checks, field, value, numbers_in(" ".join(spans)), _evidence(spans)):
+        return
+    checks.verified(field)
+
+
+def _check_value_in_span(
+    checks: _LineChecks, field: str, value: object, evidence: list[FieldEvidence]
+) -> None:
+    """For an image, the evidence is the model's own transcription, so a value that agrees
+    with it is not confirmed. One that contradicts it is a misreading, such as a thousands
+    separator taken for a decimal point; those fail, as they would for a text Source."""
+    spans = [e.span for e in evidence if e.span]
+    if spans and not isinstance(value, list):
+        _number_missing(checks, field, value, numbers_in(" ".join(spans)), _evidence(spans))
+
+
+def _number_missing(
+    checks: _LineChecks, field: str, value: object, written: set[Decimal], where: str
+) -> bool:
+    """Fail the field if one of its numbers is not among those written; True if it was."""
     for number in _numbers(value):
         if not any(_close(float(w), number) for w in written):
             checks.failed(field, ReasonCode.EVIDENCE_NOT_FOUND, f"{number:g} not found in {where}")
-            return
-    checks.verified(field)
+            return True
+    return False
+
+
+def _evidence(spans: list[str]) -> str:
+    return f"its evidence '{' / '.join(spans)}'"
 
 
 def _check_certainty(checks: _LineChecks, field: str, evidence: list[FieldEvidence]) -> None:
