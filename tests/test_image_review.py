@@ -283,3 +283,17 @@ def test_a_misread_strength_is_a_disagreement_not_a_different_product(
 
     [line] = read_model.review_queue()
     assert reasons_of(line) == {("SECOND_READ_DISAGREEMENT", "active_ingredients")}
+
+
+def test_source_images_are_the_pages_the_model_was_given(write_source, store, read_model):
+    image = make_image()
+    scan = write_source("scan.png", image)
+    ingest(
+        [scan], FakeExtractor({"scan.png": make_quotation(make_line())}), InMemoryFxSource(), store
+    )
+
+    [line] = read_model.quotation_lines()
+    detail = read_model.line_detail(line.id)
+
+    assert detail.source_image is not None
+    assert read_model.source_images(detail.source_image) == [image]
