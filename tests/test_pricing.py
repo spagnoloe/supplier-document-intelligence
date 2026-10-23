@@ -257,3 +257,30 @@ def test_missing_rate_is_asked_once_per_run(write_source, store, read_model):
     ingest([source], FakeExtractor({"offer.json": quotation}), fx, store)
 
     assert fx.requests == [("EUR", ISSUED)]
+
+
+def test_consistent_tier_prices_verify_the_tiers(write_source, store, read_model):
+    tiers = [PriceTier(min_qty=1, unit_price=0.42, pack_price=12.5)]
+    ingest_scan(write_source, store, make_line(pack_size=30, pack_price=None, price_tiers=tiers))
+
+    [line] = read_model.quotation_lines()
+    results = results_of(read_model, line)
+    assert (results["price_tiers"], results["pack_size"]) == ("verified", "verified")
+
+
+def test_inconsistent_tier_prices_fail_with_arithmetic_mismatch(write_source, store, read_model):
+    tiers = [
+        PriceTier(min_qty=1, max_qty=49, unit_price=0.42, pack_price=12.5),
+        PriceTier(min_qty=50, unit_price=0.5, pack_price=11.0),
+    ]
+    ingest_scan(write_source, store, make_line(pack_size=30, pack_price=None, price_tiers=tiers))
+
+    [line] = read_model.quotation_lines()
+    assert (line.review_status, reasons_of(line) - {("TIERED_PRICING", None)}) == (
+        "needs_review",
+        {("ARITHMETIC_MISMATCH", "price_tiers"), ("ARITHMETIC_MISMATCH", "pack_size")},
+    )
+    [reason] = [r for r in line.review_reasons if r.field == "price_tiers"]
+    assert reason.message == (
+        "Tier from 50: Unit price 0.5 × Pack size 30 = 15, but Pack price is 11"
+    )

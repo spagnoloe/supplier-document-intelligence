@@ -287,19 +287,44 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
 def _check_arithmetic(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
     """Stated values that must agree with each other verify together, or fail together:
     arithmetic shows that one of them is wrong, not which."""
-    unit, pack, pack_size = line.unit_price, line.pack_price, usable_pack_size(line)
-    if unit is not None and pack is not None and pack_size is not None:
-        fields = ("unit_price", "pack_price", "pack_size")
-        if _agrees(unit * pack_size, pack):
-            checks.verified_all(fields)
-        else:
-            checks.failed_all(
-                fields,
-                ReasonCode.ARITHMETIC_MISMATCH,
-                f"Unit price {unit:g} × Pack size {pack_size:g} = {unit * pack_size:g}, "
-                f"but Pack price is {pack:g}",
+    pack_size = usable_pack_size(line)
+    if pack_size is not None:
+        _check_pack_price(
+            checks, ("unit_price", "pack_price"), line.unit_price, line.pack_price, pack_size
+        )
+        for tier in line.price_tiers:
+            _check_pack_price(
+                checks,
+                ("price_tiers",),
+                tier.unit_price,
+                tier.pack_price,
+                pack_size,
+                f"Tier from {tier.min_qty or 0:g}: ",
             )
     _check_line_total(checks, line, prices)
+
+
+def _check_pack_price(
+    checks: _LineChecks,
+    price_fields: tuple[str, ...],
+    unit: float | None,
+    pack: float | None,
+    pack_size: float,
+    where: str = "",
+) -> None:
+    """Unit price × Pack size ≈ Pack price, when both prices are stated."""
+    if unit is None or pack is None:
+        return
+    fields = (*price_fields, "pack_size")
+    if _agrees(unit * pack_size, pack):
+        checks.verified_all(fields)
+    else:
+        checks.failed_all(
+            fields,
+            ReasonCode.ARITHMETIC_MISMATCH,
+            f"{where}Unit price {unit:g} × Pack size {pack_size:g} = {unit * pack_size:g}, "
+            f"but Pack price is {pack:g}",
+        )
 
 
 def _check_line_total(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
