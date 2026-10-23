@@ -1,6 +1,12 @@
 import json
 
-from conftest import FakeExtractor, InMemoryFxSource, make_quotation
+from conftest import (
+    FakeExtractor,
+    InMemoryFxSource,
+    make_email,
+    make_quotation,
+    make_text_pdf,
+)
 from langchain_core.exceptions import OutputParserException
 
 from sdi.pipeline import ingest
@@ -100,3 +106,80 @@ def test_structured_output_failure_gives_up_after_bounded_attempts(write_source,
     assert status.status == "failed"
     assert "invalid JSON" in status.error
     assert extractor.calls_for("hopeless.json") == 3
+
+
+def test_text_pdf_reaches_extractor_as_its_text(write_source, store, read_model):
+    source = write_source(
+        "offer.pdf", make_text_pdf("Quotation Q-1", "Alpha 500 mg tablets (box of 10) 1.00")
+    )
+    extractor = FakeExtractor({"offer.pdf": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert "Quotation Q-1" in received.text
+    assert "Alpha 500 mg tablets (box of 10) 1.00" in received.text
+    assert received.images == []
+    [status] = read_model.document_statuses()
+    assert (status.file_type, status.status, status.line_count) == ("pdf", "processed", 1)
+
+
+def test_multipart_email_reaches_extractor_as_headers_and_plain_body_once(
+    write_source, store, read_model
+):
+    source = write_source(
+        "reply.eml",
+        make_email(
+            plain="Alpha 500 mg: 0.12 per tablet\n",
+            html="<p>Alpha 500 mg: <b>0.12</b> per tablet</p>",
+        ),
+    )
+    extractor = FakeExtractor({"reply.eml": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert "From: Sales <sales@synthetic.example>" in received.text
+    assert "Date: Tue, 04 Aug 2026 16:42:11 +0200" in received.text
+    assert "Subject: RE: RFQ-1 quotation" in received.text
+    assert received.text.count("Alpha 500 mg") == 1
+    assert "Alpha 500 mg: 0.12 per tablet" in received.text
+    assert "<b>" not in received.text
+    [status] = read_model.document_statuses()
+    assert (status.file_type, status.status) == ("eml", "processed")
+
+
+def test_html_only_email_reaches_extractor_as_text_without_markup(write_source, store, read_model):
+    html = (
+        "<html><head><style>p {color: red}</style></head><body>"
+        "<p>Prices in EUR &ndash; FCA</p>"
+        "<table><tr><th>Product</th><th>Price</th></tr>"
+        "<tr><td>Alpha 500 mg</td><td>0.12 per tablet</td></tr>"
+        "<tr><td>Beta 20 mg</td><td>1.55 per box</td></tr></table>"
+        "<p>Regards,<br>Sales</p></body></html>"
+    )
+    source = write_source("offer.eml", make_email(plain=None, html=html))
+    extractor = FakeExtractor({"offer.eml": make_quotation("Alpha", "Beta")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert "Subject: RE: RFQ-1 quotation" in received.text
+    assert "Prices in EUR – FCA" in received.text
+    # Table rows stay on their own lines, so a price can't drift onto another product.
+    lines = received.text.splitlines()
+    assert any("Alpha 500 mg" in line and "0.12 per tablet" in line for line in lines)
+    assert any("Beta 20 mg" in line and "1.55 per box" in line for line in lines)
+    assert "Regards,\nSales" in received.text
+    assert "<" not in received.text.split("\n\n", 1)[1]
+    assert "color: red" not in received.text
+
+
+def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, store):
+    source = write_source("scan.pdf", make_text_pdf())
+    extractor = FakeExtractor({"scan.pdf": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert received.text is None
