@@ -156,6 +156,8 @@ def test_line_total_mismatch_fails_the_fields_involved(write_source, store, read
             ("ARITHMETIC_MISMATCH", "line_total"),
             ("ARITHMETIC_MISMATCH", "discount_pct"),
             ("ARITHMETIC_MISMATCH", "pack_price"),
+            # 1250 / 100 per capsule was tried too, so the Pack size is involved.
+            ("ARITHMETIC_MISMATCH", "pack_size"),
         },
     )
     [reason, *_] = line.review_reasons

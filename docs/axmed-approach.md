@@ -191,8 +191,8 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 **Checks:**
 - **Evidence check** (text sources). Span and text are compared after normalizing whitespace, quote marks, case and number formatting (`1,250.00` = `1250` = `1.250,00`); numbers are matched whole, so `25` never matches inside `1250`. A real span can still back a wrong number, so a numeric value must also be written in its own span. Numbers inside list entries (strengths, tier rows) need only be written somewhere in the Source: the model gives one span per field, which rarely covers every entry. That still catches computed values, e.g. tier quantities converted from packs to units.
 - **Arithmetic checks**, within 1% relative tolerance: enough for a Unit price rounded to the cent (12.50 / 30 written as 0.42 is 0.8% off), too little for a price on the wrong quantity. A pass verifies every field involved; a mismatch fails them all with `ARITHMETIC_MISMATCH`, since arithmetic shows that a value is wrong, not which.
-  - unit × pack_size ≈ pack_price, when all three are stated.
-  - qty × price × (1 − discount) ≈ line_total. Documents count the quantity in UOMs or in Packs without saying which, so either price, stated or calculated, may produce the total. Tier-only lines are skipped: the tier that applies depends on the quantity.
+  - unit × pack_size ≈ pack_price, when all three are stated, on the line and on each Price tier.
+  - qty × price × (1 − discount) ≈ line_total. Documents count the quantity in UOMs or in Packs without saying which, so either price, stated or calculated, may produce the total; a mismatch also fails the Pack size when a price calculated from it was tried. Tier-only lines are skipped: the tier that applies depends on the quantity.
 - **Rule checks.** ISO 4217 currency (`INVALID_CURRENCY`), price > 0 (`NON_POSITIVE_PRICE`), critical field present (`MISSING_CRITICAL_FIELD`), and plausible magnitude (`IMPLAUSIBLE_VALUE`: pack size a positive whole number, discount within 0–100%, positive quantity, line total and strength).
 - **Second-read agreement** (images and failed lines).
 

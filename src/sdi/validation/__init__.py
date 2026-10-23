@@ -355,8 +355,9 @@ def _check_line_total(checks: _LineChecks, line: QuotationLine, prices: DerivedP
             return
     label, price, _ = candidates[0]
     less = f" less {discount:g}%" if discount else ""
+    tried = {field: None for _, _, fields in candidates for field in fields}  # ordered set
     checks.failed_all(
-        involved + tuple(f for f in ("unit_price", "pack_price") if getattr(line, f) is not None),
+        (*involved, *tried),
         ReasonCode.ARITHMETIC_MISMATCH,
         f"Quantity {quantity:g} × {label} {price:g}{less} = {quantity * price * keep:g}, "
         f"but line total is {total:g}",
