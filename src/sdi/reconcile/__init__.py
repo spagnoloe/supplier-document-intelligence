@@ -132,14 +132,17 @@ def _supplier_key(supplier: str | None) -> str:
 
 
 def _quote_ref_key(quote_ref: str | None) -> str:
-    # Separators vary between copies of one document ("Q-12/A" vs "Q 12 A"); characters don't.
-    return _words(quote_ref, "")
+    # Separator characters vary between copies ("Q-12/A" vs "Q 12 A") but where they fall
+    # doesn't, so "Q1-23" and "Q12-3" stay different references.
+    return _words(quote_ref)
 
 
 def _words(text: str | None, sep: str = " ") -> str:
     """Lower-case letters and digits only, accents removed, runs joined by `sep`."""
     if text is None:
         return ""
+    # The micro sign has no ASCII form and would vanish, turning "µg" into "g".
+    text = text.replace("\u00b5", "mc").replace("\u03bc", "mc")
     plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     return sep.join(re.findall(r"[a-z0-9]+", plain.casefold()))
 

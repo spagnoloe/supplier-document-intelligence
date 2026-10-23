@@ -240,3 +240,36 @@ def test_product_quoted_twice_matches_by_order_not_across_pack_sizes(
     ingest([a, b], FakeExtractor({"a.json": same, "b.json": same}), InMemoryFxSource(), store)
 
     assert read_model.conflicts() == []
+
+
+def test_micro_sign_strength_matches_mcg_and_never_grams(write_source, store, read_model):
+    def strength(unit: str, pack_price: float) -> QuotationLine:
+        line = amoxicillin(pack_price)
+        line.active_ingredients[0].strength_unit = unit
+        return line
+
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b, c = (write_source(name, text) for name in ("a.json", "b.json", "c.json"))
+    quotations = {
+        "a.json": quotation(strength("µg", 12.5)),
+        "b.json": quotation(strength("mcg", 15.2)),
+        "c.json": quotation(strength("g", 15.2)),
+    }
+    ingest([a, b, c], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    [conflict] = read_model.conflicts()
+    assert [v.source for v in conflict.values] == [str(a), str(b)]
+
+
+def test_references_differing_only_where_separators_fall_are_not_linked(
+    write_source, store, read_model
+):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5), quote_ref="Q1-23"),
+        "b.json": quotation(amoxicillin(15.2), quote_ref="Q12-3"),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
