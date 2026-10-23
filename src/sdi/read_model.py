@@ -278,7 +278,7 @@ class ReadModel:
                     values=[],
                 )
             values = views[r["id"]].values
-            if term and values and values[-1].source == r["source"]:
+            if term and r["source"] in {v.source for v in values}:
                 continue  # one value per Source, stored on each of its lines
             values.append(
                 ConflictValue(
