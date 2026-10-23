@@ -438,3 +438,23 @@ def test_list_entry_number_absent_from_the_source_fails_evidence(write_source, s
     )
     [reason] = line.review_reasons
     assert reason.message == "5000 not found in source text"
+
+
+@pytest.mark.parametrize("code", ["usd", "XXX", "XAU"], ids=["lower_case", "no_currency", "gold"])
+def test_lower_case_and_non_money_iso_codes_are_invalid_currencies(
+    write_source, store, read_model, code
+):
+    text = SOURCE.replace('"USD"', f'"{code}"')
+    ingest_one(write_source, store, make_quotation(make_line(), currency=code), text)
+
+    [line] = read_model.review_queue()
+    assert reasons_of(line) == {("INVALID_CURRENCY", "currency")}
+
+
+def test_full_discount_is_plausible(write_source, store, read_model):
+    text = SOURCE.replace('"Box of 100"', '"Box of 100", "discount": "100%"')
+    spans = {**LINE_EVIDENCE, "discount_pct": "100%"}
+    ingest_one(write_source, store, make_quotation(make_line(spans, discount_pct=100.0)), text)
+
+    [line] = read_model.review_queue()
+    assert line.review_reasons == []

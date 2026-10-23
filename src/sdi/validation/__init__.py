@@ -45,9 +45,15 @@ class LineVerification(BaseModel):
     review_status: ReviewStatus
 
 
-# Price is critical as a whole: any one of unit price, pack price or tier prices.
+# A line needs at least one of these prices, and each one stated is critical.
 PRICE_FIELDS = ("unit_price", "pack_price", "price_tiers")
 CRITICAL_FIELDS = frozenset({*PRICE_FIELDS, "currency", "pack_size", "uom", "active_ingredients"})
+
+# ISO 4217 codes that aren't money a price can be quoted in: precious metals, the IMF SDR,
+# bond-market units, testing and "no currency" codes.
+_NON_MONEY_CODES = frozenset(
+    {"XAG", "XAU", "XPD", "XPT", "XDR", "XBA", "XBB", "XBC", "XBD", "XSU", "XUA", "XTS", "XXX"}
+)
 
 # Relative tolerance for a float value against the number written in its evidence.
 _NUMBER_TOLERANCE = 1e-9
@@ -166,7 +172,7 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
     currency = line.currency or quotation.currency
     if currency is None:
         checks.failed("currency", ReasonCode.MISSING_CRITICAL_FIELD, "No currency stated")
-    elif pycountry.currencies.get(alpha_3=currency) is None:
+    elif not _is_iso_currency(currency):
         checks.failed(
             "currency", ReasonCode.INVALID_CURRENCY, f"'{currency}' is not an ISO 4217 code"
         )
@@ -196,7 +202,7 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
         checks.failed(
             "pack_size",
             ReasonCode.IMPLAUSIBLE_VALUE,
-            f"Pack size {line.pack_size:g} is not a positive whole number of units",
+            f"Pack size {line.pack_size:g} is not a positive whole number of UOMs",
         )
 
     if not line.active_ingredients:
@@ -218,7 +224,7 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
                 "is not positive",
             )
 
-    if line.discount_pct is not None and not 0 <= line.discount_pct < 100:
+    if line.discount_pct is not None and not 0 <= line.discount_pct <= 100:
         checks.failed(
             "discount_pct",
             ReasonCode.IMPLAUSIBLE_VALUE,
@@ -232,9 +238,18 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
             )
 
 
+def _is_iso_currency(code: str) -> bool:
+    # pycountry's lookup ignores case; a stored code must be the upper-case form itself.
+    return (
+        code.isupper()
+        and code not in _NON_MONEY_CODES
+        and pycountry.currencies.get(alpha_3=code) is not None
+    )
+
+
 def _numbers(value: object) -> list[float]:
     """The numbers a value carries, including those nested in list entries (strengths,
-    tier prices); each must be written in the field's evidence."""
+    tier prices), each checked against what the Source writes."""
     if isinstance(value, bool):
         return []
     if isinstance(value, int | float):
