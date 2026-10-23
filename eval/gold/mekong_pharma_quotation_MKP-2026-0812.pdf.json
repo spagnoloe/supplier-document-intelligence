@@ -1,0 +1,135 @@
+{
+  "source": "mekong_pharma_quotation_MKP-2026-0812.pdf",
+  "source_type": "pdf",
+  "notes": "MOQ (packs) is not an order quantity, so quantity is not scored. Tenofovir's INN is 'tenofovir disoproxil' (the fumarate is the salt). Ferrous sulfate keeps its whole name: it is an inorganic salt, not an INN with a salt suffix; its 60 mg is stated as elemental iron. The inhaler's dosage form accepts the standard term or plain English.",
+  "quotation": {
+    "supplier": "Mekong Pharma JSC",
+    "quote_ref": "MKP-2026-0812",
+    "currency": "USD",
+    "incoterm": "CIF",
+    "incoterm_place": {
+      "any_of": [
+        "Dar es Salaam",
+        "Dar es Salaam (TZDAR)"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "brand_name": "Mekamox 500/125",
+      "active_ingredients": [
+        {
+          "inn": "amoxicillin",
+          "strength_value": 500,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "clavulanic acid",
+          "strength_value": 125,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 20,
+      "unit_price": 0.0715,
+      "pack_price": 1.43,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Vermaben 400",
+      "active_ingredients": [
+        {
+          "inn": "albendazole",
+          "strength_value": 400,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Chewable tablet",
+      "uom": "tablet",
+      "pack_size": 1,
+      "unit_price": 0.0223,
+      "pack_price": 0.0223,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Salvent HFA",
+      "active_ingredients": [
+        {
+          "inn": "salbutamol",
+          "strength_value": 100,
+          "strength_unit": "mcg/actuation"
+        }
+      ],
+      "dosage_form": {
+        "any_of": [
+          "Pressurised inhalation, suspension",
+          "Pressurised inhalation suspension",
+          "Inhalation aerosol"
+        ]
+      },
+      "uom": "inhaler",
+      "pack_size": 1,
+      "unit_price": 1.42,
+      "pack_price": 1.42,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Mekatri 300/300/50",
+      "active_ingredients": [
+        {
+          "inn": "tenofovir disoproxil",
+          "strength_value": 300,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "lamivudine",
+          "strength_value": 300,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "dolutegravir",
+          "strength_value": 50,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 30,
+      "unit_price": 0.0428,
+      "pack_price": 1.284,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Ferrofol 60/0.4",
+      "active_ingredients": [
+        {
+          "inn": "ferrous sulfate",
+          "strength_value": 60,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "folic acid",
+          "strength_value": 0.4,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Coated tablet",
+      "uom": "tablet",
+      "pack_size": 1000,
+      "unit_price": 0.00485,
+      "pack_price": 4.85,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    }
+  ]
+}

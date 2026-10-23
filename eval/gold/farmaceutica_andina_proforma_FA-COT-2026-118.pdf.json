@@ -1,0 +1,134 @@
+{
+  "source": "farmaceutica_andina_proforma_FA-COT-2026-118.pdf",
+  "source_type": "pdf",
+  "notes": "Bottle lines (04, 06) state no Pack size: the price is per bottle and no count of bottles per pack is given, so pack_size is expected empty. The 100 mL alternative in note (2) is out of scope and not a line.",
+  "quotation": {
+    "supplier": "Farmaceutica Andina S.A.S.",
+    "quote_ref": "FA-COT-2026-118",
+    "currency": "USD",
+    "incoterm": "FOB",
+    "incoterm_place": {
+      "any_of": [
+        "Cartagena",
+        "Cartagena (COCTG)",
+        "Cartagena, Colombia"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "brand_name": "Dolostop 500",
+      "active_ingredients": [
+        {
+          "inn": "paracetamol",
+          "strength_value": 500,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 20,
+      "unit_price": 0.0091,
+      "pack_price": null,
+      "discount_pct": 3.0,
+      "quantity": 6000000,
+      "line_total": 52962.0,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Amlodin 5",
+      "active_ingredients": [
+        {
+          "inn": "amlodipine",
+          "strength_value": 5,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 30,
+      "unit_price": 0.0128,
+      "pack_price": null,
+      "discount_pct": 3.0,
+      "quantity": 1800000,
+      "line_total": 22348.8,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Losandina 50",
+      "active_ingredients": [
+        {
+          "inn": "losartan",
+          "strength_value": 50,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 30,
+      "unit_price": 0.0205,
+      "pack_price": null,
+      "discount_pct": 5.0,
+      "quantity": 2400000,
+      "line_total": 46740.0,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Amoxidina 250/5",
+      "active_ingredients": [
+        {
+          "inn": "amoxicillin",
+          "strength_value": 250,
+          "strength_unit": "mg/5 mL"
+        }
+      ],
+      "dosage_form": "Powder for oral suspension",
+      "uom": "bottle",
+      "pack_size": null,
+      "unit_price": 0.345,
+      "pack_price": null,
+      "discount_pct": 0.0,
+      "quantity": 120000,
+      "line_total": 41400.0,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Enalten 10",
+      "active_ingredients": [
+        {
+          "inn": "enalapril",
+          "strength_value": 10,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 500,
+      "unit_price": 0.0074,
+      "pack_price": null,
+      "discount_pct": 5.0,
+      "quantity": 3000000,
+      "line_total": 21090.0,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Salbudina 2/5",
+      "active_ingredients": [
+        {
+          "inn": "salbutamol",
+          "strength_value": 2,
+          "strength_unit": "mg/5 mL"
+        }
+      ],
+      "dosage_form": "Syrup",
+      "uom": "bottle",
+      "pack_size": null,
+      "unit_price": 0.412,
+      "pack_price": null,
+      "discount_pct": 0.0,
+      "quantity": 90000,
+      "line_total": 37080.0,
+      "price_tiers": []
+    }
+  ]
+}
