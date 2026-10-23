@@ -1,9 +1,11 @@
 from collections.abc import Callable
 from datetime import date
 from email.message import EmailMessage
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from openpyxl import Workbook
 
 from sdi.extraction.schema import ActiveIngredient, Quotation, QuotationLine
 from sdi.loaders import DocumentContent
@@ -99,6 +101,19 @@ def make_email(plain: str | None, html: str | None) -> bytes:
         else:
             message.add_alternative(html, subtype="html")
     return message.as_bytes()
+
+
+def make_workbook(sheets: dict[str, list[list[object]]]) -> bytes:
+    """An .xlsx with one sheet per entry, rows written as given (None leaves a cell empty)."""
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for title, rows in sheets.items():
+        sheet = workbook.create_sheet(title)
+        for row in rows:
+            sheet.append(row)
+    out = BytesIO()
+    workbook.save(out)
+    return out.getvalue()
 
 
 @pytest.fixture
