@@ -61,7 +61,7 @@ def _row(line: LineView) -> dict[str, str]:
         for tier in line.price_tiers
     )
     values["approved"] = "yes" if line.approved else "no"
-    values["corrected_fields"] = "; ".join(line.extracted)
+    values["corrected_fields"] = "; ".join(line.extracted_values)
     values["review_reasons"] = "; ".join(
         f"{r.code}({r.field}): {r.message}" if r.field else f"{r.code}: {r.message}"
         for r in line.review_reasons

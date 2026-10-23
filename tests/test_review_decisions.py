@@ -4,6 +4,7 @@ the read model."""
 import csv
 from io import StringIO
 
+import pytest
 from conftest import FakeExtractor, InMemoryFxSource, make_quotation
 
 from sdi.cli import main
@@ -42,7 +43,7 @@ def test_correction_becomes_the_current_value_and_keeps_the_extracted_one(
     assert (decision.action, decision.reviewer, decision.field) == ("correct", "ana", "pack_size")
     assert (decision.old_value, decision.new_value) == (10, 20)
     [corrected] = read_model.quotation_lines()
-    assert (corrected.pack_size, corrected.extracted) == (20, {"pack_size": 10})
+    assert (corrected.pack_size, corrected.extracted_values) == (20, {"pack_size": 10})
     pack_size = next(f for f in read_model.line_detail(line.id).fields if f.field == "pack_size")
     assert (pack_size.value, pack_size.extracted_value) == (20, 10)
 
@@ -59,7 +60,7 @@ def test_a_second_correction_records_the_first_as_its_old_value(write_source, st
         (20, 30),
     ]
     [corrected] = read_model.quotation_lines()
-    assert (corrected.pack_size, corrected.extracted) == (30, {"pack_size": 10})
+    assert (corrected.pack_size, corrected.extracted_values) == (30, {"pack_size": 10})
 
 
 def test_a_correction_after_approval_withdraws_it(write_source, store, read_model):
@@ -86,7 +87,7 @@ def test_re_ingesting_keeps_decisions_and_compares_sources_on_extracted_values(
 
     [line] = [line for line in read_model.quotation_lines() if line.source.endswith("b.json")]
     assert [d.action for d in read_model.decisions(line.id)] == ["correct", "approve"]
-    assert (line.pack_size, line.extracted, line.approved) == (10, {"pack_size": 20}, True)
+    assert (line.pack_size, line.extracted_values, line.approved) == (10, {"pack_size": 20}, True)
     # The Sources still disagree: a correction resolves the line, not the Conflict.
     [conflict] = read_model.conflicts()
     assert sorted(v.value for v in conflict.values) == [10, 20]
@@ -145,3 +146,40 @@ def test_cli_writes_the_export(write_source, db_path, store, tmp_path, monkeypat
 
     [row] = csv.DictReader(out.open())
     assert row["active_ingredients"] == "alpha"
+
+
+def test_clearing_a_line_currency_falls_back_to_the_quotation_currency(
+    write_source, store, read_model
+):
+    quotation = make_quotation("Alpha")
+    quotation.lines[0].currency = "EUR"
+    ingest_sources(write_source, store, {"offer.json": quotation})
+    [line] = read_model.quotation_lines()
+
+    store.correct(line.id, "currency", None, reviewer="ana")
+
+    [line] = read_model.quotation_lines()
+    assert (line.currency, line.usd_per_uom) == ("USD", 0.1)
+
+
+def test_a_corrected_currency_with_no_rate_says_so(write_source, store, read_model):
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")})
+    [line] = read_model.quotation_lines()
+
+    store.correct(line.id, "currency", "EUR", reviewer="ana")
+
+    [line] = read_model.quotation_lines()
+    assert line.usd_per_uom is None
+    assert "FX_UNAVAILABLE" in {r.code for r in line.review_reasons}
+
+
+@pytest.mark.parametrize("reviewer", ["", "  "])
+def test_a_decision_needs_a_reviewer(write_source, store, read_model, reviewer):
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")})
+    [line] = read_model.quotation_lines()
+
+    with pytest.raises(ValueError):
+        store.approve(line.id, reviewer=reviewer)
+    with pytest.raises(ValueError):
+        store.correct(line.id, "uom", "tablet", reviewer=reviewer)
+    assert read_model.decisions(line.id) == []

@@ -285,6 +285,8 @@ Reconciliation never merges or picks a winner.
 **Review decisions:**
 - The current value of a field is its latest correction, else the extracted value. The read model returns current values and keeps each corrected field's extracted value next to it. Headline, net and USD prices are recalculated from current values, using only FX rates ingest already cached, so a correction never fetches or estimates a rate.
 - A line is approved when its latest decision is an approval; a later correction withdraws it, since the approval covered other values.
+- Review status and Review reasons stay what verification and reconciliation found in the Sources; a correction doesn't clear them. Approval is the reviewer's resolution, kept as its own column, so the export shows both why a line was flagged and that someone signed it off. The one reason a correction adds is `FX_UNAVAILABLE`, when a corrected currency has no cached rate.
+- A line currency corrected to empty falls back to the Quotation's, as an extracted one does.
 - Decisions are keyed by Source path and line number, not by line id: re-ingesting a Source replaces its lines, and decisions must outlive that.
 - Reconciliation compares extracted values. A correction resolves the line for export; it doesn't make the Sources agree, so the Conflict stays visible.
 - **CSV export** (`sdi export <file.csv>`): one row per line with current values, derived prices, review status, approval, corrected fields, Review reasons, and Source path + line number.

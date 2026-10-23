@@ -232,6 +232,7 @@ class Store:
             )
 
     def approve(self, line_id: int, *, reviewer: str) -> None:
+        _require_reviewer(reviewer)
         with connect(self.db_path) as conn:
             _insert(
                 conn,
@@ -242,6 +243,7 @@ class Store:
     def correct(self, line_id: int, field: str, value: object, *, reviewer: str) -> None:
         """Record a reviewer's value for one field. The extracted value is kept; the latest
         correction is the field's current value."""
+        _require_reviewer(reviewer)
         if field not in CORRECTABLE_FIELDS:
             raise ValueError(f"{field} is not a correctable Quotation line field")
         annotation = QuotationLine.model_fields[field].annotation
@@ -265,12 +267,7 @@ class Store:
 
     def fx_rate(self, currency: str, on: date) -> FxRate | None:
         with connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT rate, rate_date, source FROM fx_rates"
-                " WHERE currency = ? AND requested_date = ?",
-                (currency, on.isoformat()),
-            ).fetchone()
-        return None if row is None else FxRate(**dict(row))
+            return cached_fx_rate(conn, currency, on)
 
     def save_fx_rate(self, currency: str, on: date, rate: FxRate) -> None:
         with connect(self.db_path) as conn:
@@ -315,6 +312,14 @@ class Store:
         )
 
 
+def cached_fx_rate(conn: sqlite3.Connection, currency: str, on: date) -> FxRate | None:
+    row = conn.execute(
+        "SELECT rate, rate_date, source FROM fx_rates WHERE currency = ? AND requested_date = ?",
+        (currency, on.isoformat()),
+    ).fetchone()
+    return None if row is None else FxRate(**dict(row))
+
+
 def _add_missing_columns(conn: sqlite3.Connection) -> None:
     """A database from an earlier schema gains the columns added since, so an existing
     sdi.db keeps working; nothing is dropped or changed. Existing rows get the column's
@@ -329,6 +334,11 @@ def _add_missing_columns(conn: sqlite3.Connection) -> None:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
                     if (backfill := _BACKFILLS.get((table, column))) is not None:
                         conn.execute(f"UPDATE {table} SET {column} = {backfill}")
+
+
+def _require_reviewer(reviewer: str) -> None:
+    if not reviewer.strip():
+        raise ValueError("A review decision needs a reviewer")
 
 
 def _line_key(conn: sqlite3.Connection, line_id: int) -> dict:

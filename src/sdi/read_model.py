@@ -4,15 +4,15 @@ the tables directly."""
 import json
 import sqlite3
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
 from sdi.extraction.schema import FieldEvidence, QuotationLine
-from sdi.fx import FxRate
-from sdi.store import ProcessingStatus, connect
-from sdi.validation import FieldResult, ReviewReason, ReviewStatus
+from sdi.store import ProcessingStatus, cached_fx_rate, connect
+from sdi.validation import FieldResult, ReasonCode, ReviewReason, ReviewStatus
 from sdi.validation.pricing import DerivedPrices, convert_to_usd, derive_prices
 
 
@@ -56,7 +56,7 @@ class LineView(DerivedPrices):
     approved: bool
     # The extracted value of each field a reviewer corrected; the fields above hold the
     # current value, the latest correction.
-    extracted: dict[str, object]
+    extracted_values: dict[str, object]
 
 
 class ReviewDecision(BaseModel):
@@ -112,7 +112,8 @@ _LINES_QUERY = """
     SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, l.line_no,
            l.brand_name, l.active_ingredients, l.dosage_form, l.uom,
            l.pack_size, l.unit_price, l.pack_price,
-           COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
+           COALESCE(l.currency, q.currency) AS currency, q.currency AS quotation_currency,
+           l.discount_pct,
            l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence,
            l.review_status, l.field_verification, q.evidence AS quotation_evidence,
            q.issue_date,
@@ -204,7 +205,7 @@ class ReadModel:
                 FieldDetail(
                     field=field,
                     value=getattr(view, field),
-                    extracted_value=view.extracted.get(field, getattr(view, field)),
+                    extracted_value=view.extracted_values.get(field, getattr(view, field)),
                     evidence=evidence,
                     result=result,
                     reasons=[r for r in view.review_reasons if r.field == field],
@@ -293,33 +294,30 @@ class ReadModel:
                     for d in decisions
                     if corrected and d["action"] == "correct"
                 }
-                row["extracted"] = {field: row[field] for field in corrections}
+                row["extracted_values"] = {field: row[field] for field in corrections}
                 row.update(corrections)
+                if row["currency"] is None:  # a line with no currency of its own
+                    row["currency"] = row["quotation_currency"]
                 if corrections:
-                    row.update(_prices(conn, row).model_dump())
+                    _reprice(conn, row)
                 row["inns"] = [i["inn"] for i in row["active_ingredients"]]
                 views.append((LineView(**row), row))
         return views
 
 
-def _prices(conn: sqlite3.Connection, row: dict) -> DerivedPrices:
-    """Prices calculated from a line's current values, converted at the rate ingest cached for
-    its currency and issue date; with no cached rate the USD price is left empty."""
-    line = QuotationLine.model_validate(row)
-    prices = derive_prices(line)
+def _reprice(conn: sqlite3.Connection, row: dict) -> None:
+    """Recalculate a corrected line's prices from its current values, converted at the rate
+    ingest cached for its currency and issue date. With no cached rate the USD price is left
+    empty and a Review reason says why: a correction never fetches or estimates a rate."""
+    prices = derive_prices(QuotationLine.model_validate(row))
     if row["currency"] is not None:
         issue_date = None if row["issue_date"] is None else date.fromisoformat(row["issue_date"])
-
-        def cached_rate(currency: str, on: date) -> FxRate | None:
-            rate = conn.execute(
-                "SELECT rate, rate_date, source FROM fx_rates"
-                " WHERE currency = ? AND requested_date = ?",
-                (currency, on.isoformat()),
-            ).fetchone()
-            return None if rate is None else FxRate(**dict(rate))
-
-        convert_to_usd(prices, row["currency"], issue_date, cached_rate)
-    return prices
+        rate = partial(cached_fx_rate, conn)
+        if (missing := convert_to_usd(prices, row["currency"], issue_date, rate)) is not None:
+            row["review_reasons"].append(
+                ReviewReason(code=ReasonCode.FX_UNAVAILABLE, field="currency", message=missing)
+            )
+    row.update(prices.model_dump())
 
 
 def _json(value: str | None) -> object:
