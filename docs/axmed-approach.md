@@ -75,6 +75,8 @@ class DocumentContent(BaseModel):
 
 The scanned-PDF fallback is generic: below 25 non-blank characters per page on average, the PDF counts as a scan and its pages are rendered at 200 dpi. A page number or scanner stamp doesn't count as a text layer, since sending it as text would fail every evidence check. The pack has no scanned PDFs, so the fallback is covered by a synthetic test, not by the sample.
 
+**Known limitation:** the text yield is averaged over the whole PDF, so one with a text page and a scanned page counts as text and the scanned page is never seen. Handling it per page would need one Source to carry both text and images, and image-ness to be decided per page rather than per Source, which reaches into the review rules. Nothing in the pack exercises it, so it's recorded, not built.
+
 ---
 
 ## 4. Extensibility proof: the Excel loader
@@ -230,7 +232,9 @@ Both pack images are scans of the Andina PDF, so expected values come from the c
 - **`scan_02`**: 3 of 6 lines `auto_ok`, every field verified by the line total and agreeing reads. Line 1 has a misread unit price (0.0094 for 0.0091). Both reads made the same misread, so agreement couldn't catch it; the line-total check and the Conflict with the PDF did. Lines 4 and 6 state no pack size, as in the clean PDF, which sends those lines to review too.
 - **`scan_03`**: the three glare-hidden unit prices come back empty and those lines are `needs_review`. The first read split one row into two (7 lines against 6), so the reads weren't compared and every line is in review.
 
-Two reads from one provider made the same misread on `scan_02`, which is the correlated-error risk ADR-0004 names. The arithmetic checks are the stronger signal.
+How to read the `scan_02` number: the clean PDF itself can auto-accept only 4 of the 6 lines, since 2 state no pack size. Of those 4, the scan auto-accepts 3 and correctly flags the 4th as a misread. Accepting that line would be the actual failure. The prompt wasn't tuned to raise the number: that would fit it to the sample (ADR-0001).
+
+Two reads from one provider made the same misread on `scan_02`, which is the correlated-error risk ADR-0004 names. The arithmetic checks are the stronger signal. For the same reason, agreeing reads show the reads match, not that they're right: two reads that both guessed a hidden value would verify it. The prompt rule against guessing is the only guard, so a line total, where present, matters more than agreement.
 
 Line detail gives the Source to show for an image line, the image file or the scanned PDF.
 
@@ -374,5 +378,5 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 | Uncertainty signalling | §6, §7, ADR-0004 |
 | Production readiness | Column-mapping cache, provider-agnostic models with fallbacks, paid or no-training tier for PII, FastAPI review app, tracing |
 | CI/CD and infrastructure | Cached eval as regression gate, containerized worker, queue-based scaling |
-| Limitations | Whole-table serialization, no OCR confidence, single-provider second read, alternative offers not extracted, exact dosage-form matching |
+| Limitations | Whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching |
 | Data model reflection | §5 table |
