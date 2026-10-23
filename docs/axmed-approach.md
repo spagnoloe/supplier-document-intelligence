@@ -286,12 +286,13 @@ Reconciliation never merges or picks a winner.
 
 **Review decisions:**
 - The current value of a field is its latest correction, else the extracted value. The read model returns current values and keeps each corrected field's extracted value next to it. Headline, net and USD prices are recalculated from current values, using only FX rates ingest already cached, so a correction never fetches or estimates a rate.
-- A line is approved when its latest decision is an approval; a later correction withdraws it, since the approval covered other values.
-- Review status and Review reasons stay what verification and reconciliation found in the Sources; a correction doesn't clear them. Approval is the reviewer's resolution, kept as its own column, so the export shows both why a line was flagged and that someone signed it off. The one reason a correction adds is `FX_UNAVAILABLE`, when a corrected currency has no cached rate.
+- A line's review status is `reviewed` when its latest decision is an approval, otherwise the pipeline's `needs_review` or `auto_ok`. One column then answers whether a line still needs a human, and reviewed lines leave the `needs_review` queue and count. It's worked out on read, not stored: reconciliation rewrites the stored status on every ingest.
+- A later correction withdraws an approval, since the approval covered other values. So does a Review reason raised after it, e.g. a newly ingested Source of the same Quotation that conflicts with the line: an approval records the reasons the reviewer saw, by code and field, and the line goes back to the pipeline's status when one appears that wasn't among them.
+- Review reasons stay what verification and reconciliation found in the Sources; a correction or approval doesn't clear them, so a reviewed line still shows why it was flagged. The one reason a correction adds is `FX_UNAVAILABLE`, when a corrected currency has no cached rate.
 - A line currency corrected to empty falls back to the Quotation's, as an extracted one does.
 - A decision applies to the reading of the Source it was made on. A re-run leaves an unchanged Source alone (§2), so its decisions stand. A Source read again (new content, models or prompt, or `--force`) starts a fresh review: its earlier decisions stay in the log, marked as no longer current, but aren't applied. Carrying them over was rejected: a new reading can drop, split or reorder lines, so a decision matched by line number could land on another Product, and the values a reviewer approved may no longer be the ones shown.
 - Reconciliation compares extracted values. A correction resolves the line for export; it doesn't make the Sources agree, so the Conflict stays visible.
-- **CSV export** (`sdi export <file.csv>`): one row per line with current values, derived prices, review status, approval, corrected fields, Review reasons, and Source path + line number.
+- **CSV export** (`sdi export <file.csv>`): one row per line with current values, derived prices, review status, corrected fields, Review reasons, and Source path + line number.
 
 **Known limitation:** reprocessing after a pipeline change means reviewing those Sources again. Production could offer earlier decisions as suggestions where the new reading's line has the same Product and extracted value, for a reviewer to confirm.
 

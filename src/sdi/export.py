@@ -31,7 +31,6 @@ COLUMNS = (
     "fx_rate",
     "fx_rate_date",
     "review_status",
-    "approved",
     "corrected_fields",
     "review_reasons",
 )
@@ -60,7 +59,6 @@ def _row(line: LineView) -> dict[str, str]:
         ", ".join(f"{k}={_cell(v)}" for k, v in tier.items() if v is not None)
         for tier in line.price_tiers
     )
-    values["approved"] = "yes" if line.approved else "no"
     values["corrected_fields"] = "; ".join(line.extracted_values)
     values["review_reasons"] = "; ".join(
         f"{r.code}({r.field}): {r.message}" if r.field else f"{r.code}: {r.message}"

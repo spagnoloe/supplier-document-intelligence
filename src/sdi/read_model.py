@@ -3,6 +3,7 @@ the tables directly."""
 
 import json
 import sqlite3
+from collections import Counter
 from datetime import date
 from functools import partial
 from pathlib import Path
@@ -12,8 +13,12 @@ from pydantic import BaseModel
 
 from sdi.extraction.schema import FieldEvidence, QuotationLine
 from sdi.store import ProcessingStatus, cached_fx_rate, connect
-from sdi.validation import FieldResult, ReasonCode, ReviewReason, ReviewStatus
+from sdi.validation import FieldResult, ReasonCode, ReviewReason
 from sdi.validation.pricing import DerivedPrices, convert_to_usd, derive_prices
+
+# A line's review status: the pipeline's (needs_review or auto_ok), or reviewed once a
+# reviewer approves it and no Review reason has been raised since.
+LineStatus = Literal["needs_review", "auto_ok", "reviewed"]
 
 
 class DocumentStatus(BaseModel):
@@ -50,10 +55,8 @@ class LineView(DerivedPrices):
     price_tiers: list[dict]
     revision_note: str | None
     evidence: list[FieldEvidence]
-    review_status: ReviewStatus
+    review_status: LineStatus
     review_reasons: list[ReviewReason]
-    # True when the line's latest review decision is an approval.
-    approved: bool
     # The extracted value of each field a reviewer corrected; the fields above hold the
     # current value, the latest correction.
     extracted_values: dict[str, object]
@@ -126,7 +129,8 @@ _LINES_QUERY = """
             FROM (SELECT * FROM review_reasons WHERE line_id = l.id ORDER BY id) r
            ) AS review_reasons,
            (SELECT json_group_array(json_object('action', rd.action, 'field', rd.field,
-                                                'new_value', json(rd.new_value)))
+                                                'new_value', json(rd.new_value),
+                                                'reasons_seen', json(rd.reasons_seen)))
             FROM (SELECT * FROM review_decisions
                   WHERE extraction_id = d.extraction_id AND line_no = l.line_no ORDER BY id) rd
            ) AS decisions
@@ -141,19 +145,22 @@ class ReadModel:
         self.db_path = Path(db_path)
 
     def document_statuses(self) -> list[DocumentStatus]:
+        needs_review = Counter(
+            line.source for line in self.quotation_lines() if line.review_status == "needs_review"
+        )
         with connect(self.db_path) as conn:
             rows = conn.execute(
                 """SELECT d.source_path AS source, d.file_type, d.status, d.document_type,
-                          d.error, COUNT(l.id) AS line_count,
-                          COUNT(CASE WHEN l.review_status = 'needs_review' THEN 1 END)
-                              AS needs_review_count
+                          d.error, COUNT(l.id) AS line_count
                    FROM documents d
                    LEFT JOIN quotations q ON q.document_id = d.id
                    LEFT JOIN quotation_lines l ON l.quotation_id = q.id
                    GROUP BY d.id
                    ORDER BY d.source_path"""
             ).fetchall()
-        return [DocumentStatus(**dict(r)) for r in rows]
+        return [
+            DocumentStatus(**dict(r), needs_review_count=needs_review[r["source"]]) for r in rows
+        ]
 
     def quotation_lines(self, *, corrected: bool = True) -> list[LineView]:
         """Every line; with `corrected` False, as extracted, ignoring reviewers' corrections."""
@@ -166,29 +173,25 @@ class ReadModel:
         self,
         *,
         supplier: str | None = None,
-        review_status: ReviewStatus | None = None,
+        review_status: LineStatus | None = None,
         source: str | None = None,
         reason_code: str | None = None,
     ) -> list[LineView]:
         """Lines to review, `needs_review` first; each filter is ignored when None."""
-        return [
+        lines = [
             view
             for view, _ in self._lines(
                 """WHERE (:supplier IS NULL OR q.supplier = :supplier)
-                     AND (:review_status IS NULL OR l.review_status = :review_status)
                      AND (:source IS NULL OR d.source_path = :source)
                      AND (:reason_code IS NULL OR EXISTS (
                           SELECT 1 FROM review_reasons r
                           WHERE r.line_id = l.id AND r.code = :reason_code))
-                   ORDER BY l.review_status = 'needs_review' DESC, d.source_path, l.line_no""",
-                {
-                    "supplier": supplier,
-                    "review_status": review_status,
-                    "source": source,
-                    "reason_code": reason_code,
-                },
+                   ORDER BY d.source_path, l.line_no""",
+                {"supplier": supplier, "source": source, "reason_code": reason_code},
             )
+            if review_status is None or view.review_status == review_status
         ]
+        return sorted(lines, key=lambda line: line.review_status != "needs_review")
 
     def line_detail(self, line_id: int) -> LineDetail:
         """Each verified field's value, its evidence, its verification result and the
@@ -303,7 +306,7 @@ class ReadModel:
                 for col in ("active_ingredients", "price_tiers", "evidence", "review_reasons"):
                     row[col] = json.loads(row[col])
                 decisions = json.loads(row.pop("decisions"))
-                row["approved"] = bool(decisions) and decisions[-1]["action"] == "approve"
+                row["review_status"] = _line_status(row, decisions)
                 corrections = {
                     d["field"]: d["new_value"]
                     for d in decisions
@@ -318,6 +321,16 @@ class ReadModel:
                 row["inns"] = [i["inn"] for i in row["active_ingredients"]]
                 views.append((LineView(**row), row))
         return views
+
+
+def _line_status(row: dict, decisions: list[dict]) -> LineStatus:
+    """Reviewed when the latest decision is an approval and every stored Review reason was
+    there when it was given; otherwise the pipeline's status."""
+    if decisions and decisions[-1]["action"] == "approve":
+        seen = {tuple(reason) for reason in decisions[-1]["reasons_seen"] or []}
+        if all((r["code"], r["field"]) in seen for r in row["review_reasons"]):
+            return "reviewed"
+    return row["review_status"]
 
 
 def _reprice(conn: sqlite3.Connection, row: dict) -> None:

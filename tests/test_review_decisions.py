@@ -34,7 +34,7 @@ def test_approving_a_line_is_recorded_in_its_decision_log(write_source, store, r
     assert (decision.old_value, decision.new_value) == (None, None)
     assert decision.decided_at is not None
     assert (decision.source, decision.line_no, decision.current) == (line.source, 1, True)
-    assert read_model.quotation_lines()[0].approved
+    assert read_model.quotation_lines()[0].review_status == "reviewed"
 
 
 def test_correction_becomes_the_current_value_and_keeps_the_extracted_one(
@@ -76,7 +76,7 @@ def test_a_correction_after_approval_withdraws_it(write_source, store, read_mode
     store.approve(line.id, reviewer="ana")
     store.correct(line.id, "uom", "tablet", reviewer="ana")
 
-    assert not read_model.quotation_lines()[0].approved
+    assert read_model.quotation_lines()[0].review_status == line.review_status != "reviewed"
 
 
 def test_re_ingesting_unchanged_sources_keeps_decisions_and_compares_extracted_values(
@@ -93,7 +93,11 @@ def test_re_ingesting_unchanged_sources_keeps_decisions_and_compares_extracted_v
 
     [line] = [line for line in read_model.quotation_lines() if line.source.endswith("b.json")]
     assert [d.action for d in read_model.decisions(line.id)] == ["correct", "approve"]
-    assert (line.pack_size, line.extracted_values, line.approved) == (10, {"pack_size": 20}, True)
+    assert (line.pack_size, line.extracted_values, line.review_status) == (
+        10,
+        {"pack_size": 20},
+        "reviewed",
+    )
     # The Sources still disagree: a correction resolves the line, not the Conflict.
     [conflict] = read_model.conflicts()
     assert sorted(v.value for v in conflict.values) == [10, 20]
@@ -110,7 +114,7 @@ def test_reading_a_source_again_starts_its_review_afresh_and_keeps_the_log(
     ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")}, "v2")
 
     [line] = read_model.quotation_lines()
-    assert (line.pack_size, line.extracted_values, line.approved) == (10, {}, False)
+    assert (line.pack_size, line.extracted_values, line.review_status) == (10, {}, "needs_review")
     assert read_model.decisions(line.id) == []
     log = read_model.decision_log()
     assert [(d.action, d.source, d.line_no, d.current) for d in log] == [
@@ -158,8 +162,8 @@ def test_export_has_current_values_review_status_reasons_and_source(
     assert [(r["source"], r["line_no"]) for r in rows] == [(alpha.source, "1"), (beta.source, "2")]
     assert rows[0]["active_ingredients"] == "alpha"
     assert (rows[0]["pack_size"], rows[0]["headline_unit_price"]) == ("20", "0.05")
-    assert (rows[0]["approved"], rows[0]["corrected_fields"]) == ("yes", "pack_size")
-    assert (rows[1]["review_status"], rows[1]["approved"]) == ("needs_review", "no")
+    assert (rows[0]["review_status"], rows[0]["corrected_fields"]) == ("reviewed", "pack_size")
+    assert rows[1]["review_status"] == "needs_review"
     assert "IMPLAUSIBLE_VALUE" in rows[1]["review_reasons"]
 
 
@@ -209,3 +213,39 @@ def test_a_decision_needs_a_reviewer(write_source, store, read_model, reviewer):
     with pytest.raises(ValueError):
         store.correct(line.id, "uom", "tablet", reviewer=reviewer)
     assert read_model.decisions(line.id) == []
+
+
+def test_reviewed_lines_leave_the_needs_review_queue_and_count(write_source, store, read_model):
+    quotation = make_quotation("Alpha", "Beta")
+    for line in quotation.lines:
+        line.pack_size = 0
+    ingest_sources(write_source, store, {"offer.json": quotation})
+    alpha, beta = read_model.quotation_lines()
+
+    store.correct(alpha.id, "pack_size", 10, reviewer="ana")
+    store.approve(alpha.id, reviewer="ana")
+
+    assert [line.id for line in read_model.review_queue()] == [beta.id, alpha.id]
+    assert [line.id for line in read_model.review_queue(review_status="needs_review")] == [beta.id]
+    assert [line.id for line in read_model.review_queue(review_status="reviewed")] == [alpha.id]
+    [status] = read_model.document_statuses()
+    assert (status.line_count, status.needs_review_count) == (2, 1)
+    # The reasons it was flagged for stay visible on the reviewed line.
+    assert "IMPLAUSIBLE_VALUE" in {r.code for r in read_model.review_queue()[1].review_reasons}
+
+
+def test_a_new_reason_after_approval_reopens_the_line(write_source, store, read_model):
+    ingest_sources(write_source, store, {"a.json": make_quotation("Alpha")})
+    [line] = read_model.quotation_lines()
+    store.approve(line.id, reviewer="ana")
+
+    # A second Source of the same Quotation arrives and disagrees with the approved line.
+    disagreeing = make_quotation("Alpha")
+    disagreeing.lines[0].pack_size = 20
+    ingest_sources(write_source, store, {"b.json": disagreeing})
+
+    line = next(line for line in read_model.quotation_lines() if line.source.endswith("a.json"))
+    assert line.review_status == "needs_review"
+    assert "IN_CONFLICT" in {r.code for r in line.review_reasons}
+    store.approve(line.id, reviewer="ana")
+    assert read_model.line_detail(line.id).line.review_status == "reviewed"

@@ -124,7 +124,10 @@ CREATE TABLE IF NOT EXISTS review_decisions (
     action TEXT NOT NULL CHECK (action IN ('approve', 'correct')),
     field TEXT,
     old_value TEXT,
-    new_value TEXT
+    new_value TEXT,
+    -- On an approval, the (code, field) of each Review reason the reviewer saw: a reason
+    -- raised after it reopens the line.
+    reasons_seen TEXT
 );
 """
 
@@ -245,10 +248,18 @@ class Store:
     def approve(self, line_id: int, *, reviewer: str) -> None:
         _require_reviewer(reviewer)
         with connect(self.db_path) as conn:
+            reasons = conn.execute(
+                "SELECT code, field FROM review_reasons WHERE line_id = ? ORDER BY id", (line_id,)
+            ).fetchall()
             _insert(
                 conn,
                 "review_decisions",
-                {**_line_key(conn, line_id), "reviewer": reviewer, "action": "approve"},
+                {
+                    **_line_key(conn, line_id),
+                    "reviewer": reviewer,
+                    "action": "approve",
+                    "reasons_seen": [list(r) for r in reasons],
+                },
             )
 
     def correct(self, line_id: int, field: str, value: object, *, reviewer: str) -> None:
