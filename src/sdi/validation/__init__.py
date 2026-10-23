@@ -105,7 +105,7 @@ def verify(
     # Without source text (images) the evidence check can't run, so fields stay unverified.
     text = SourceText(content.text) if content.text else None
     image = bool(content.images)
-    reread = None if second_read is None else _SecondRead(second_read, len(quotation.lines))
+    reread = None if second_read is None else _SecondRead(second_read, quotation)
     return [
         _verify_line(line, n, quotation, text, image, reread, fx)
         for n, line in enumerate(quotation.lines)
@@ -167,9 +167,12 @@ class _LineChecks:
 
 class _SecondRead:
     """The second read's lines, paired with the first read's by position. When it failed,
-    or has a different number of lines, no line can be paired, and `skipped` says why."""
+    has a different number of lines, or lists other products in the same positions, no line
+    can be paired, and `skipped` says why. Pairing by INN only, not by strength, keeps a
+    misread strength a disagreement rather than a different product."""
 
-    def __init__(self, outcome: Quotation | Exception, first_count: int):
+    def __init__(self, outcome: Quotation | Exception, first: Quotation):
+        first_count = len(first.lines)
         self.quotation = outcome if isinstance(outcome, Quotation) else None
         self.skipped: tuple[ReasonCode, str] | None = None
         if isinstance(outcome, Exception):
@@ -183,6 +186,18 @@ class _SecondRead:
                 f"Second read found {len(outcome.lines)} lines, first read {first_count}; "
                 "lines weren't compared",
             )
+        elif any(
+            a and b and a != b
+            for a, b in zip(map(_inns, first.lines), map(_inns, outcome.lines), strict=True)
+        ):
+            self.skipped = (
+                ReasonCode.SECOND_READ_DISAGREEMENT,
+                "Second read lists other products in the same positions; lines weren't compared",
+            )
+
+
+def _inns(line: QuotationLine) -> set[tuple[str, ...]]:
+    return {_words(i.inn) for i in line.active_ingredients}
 
 
 def _verify_line(
@@ -260,7 +275,7 @@ def _comparable(value: object) -> object:
     """A value as two reads of one Source can be expected to agree on: case, punctuation
     and list order ignored, and an ingredient by its INN and strength, not its spelling."""
     if isinstance(value, str):
-        return tuple(re.findall(r"\w+", value.casefold()))
+        return _words(value)
     if isinstance(value, BaseModel):
         return _comparable(value.model_dump(exclude={"name_as_written"}))
     if isinstance(value, dict):
@@ -270,6 +285,10 @@ def _comparable(value: object) -> object:
     if isinstance(value, int | float) and not isinstance(value, bool):
         return float(value)
     return value
+
+
+def _words(text: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"\w+", text.casefold()))
 
 
 def _display(value: object) -> str:

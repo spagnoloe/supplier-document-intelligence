@@ -249,3 +249,37 @@ def test_failed_second_read_keeps_the_first_read_with_a_note(
     [note] = [r for r in line.review_reasons if r.code == "SECOND_READ_UNAVAILABLE"]
     assert str(error) in note.message
     assert len(second_reader.received) == attempts
+
+
+def test_reads_listing_products_in_a_different_order_compare_no_line(
+    write_source, store, read_model
+):
+    paracetamol = [
+        ActiveIngredient(
+            name_as_written="Paracetamol", inn="paracetamol", strength_value=500, strength_unit="mg"
+        )
+    ]
+    first = make_quotation(make_line(), make_line(active_ingredients=paracetamol, pack_price=3.0))
+    second = make_quotation(make_line(active_ingredients=paracetamol, pack_price=3.0), make_line())
+    ingest_scan(write_source, store, first, second)
+
+    for line in read_model.review_queue():
+        # Paired by position, every field would fail; the reads aren't compared instead.
+        assert "SECOND_READ_DISAGREEMENT" not in {r.code for r in line.review_reasons if r.field}
+        assert ("SECOND_READ_DISAGREEMENT", None) in reasons_of(line)
+        assert results_of(read_model, line)["uom"] == "unverified"
+
+
+def test_a_misread_strength_is_a_disagreement_not_a_different_product(
+    write_source, store, read_model
+):
+    misread = [
+        ActiveIngredient(
+            name_as_written="Amoxicillin", inn="amoxicillin", strength_value=250, strength_unit="mg"
+        )
+    ]
+    second = make_quotation(make_line(active_ingredients=misread))
+    ingest_scan(write_source, store, make_quotation(make_line()), second)
+
+    [line] = read_model.review_queue()
+    assert reasons_of(line) == {("SECOND_READ_DISAGREEMENT", "active_ingredients")}
