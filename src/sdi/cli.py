@@ -117,7 +117,7 @@ def _ingest(
         GeminiExtractor(settings.extraction_model),
         fx_source=frankfurter,
         store=Store(db_path),
-        second_reader=GeminiExtractor(settings.second_read_model),
+        second_reader=GeminiExtractor(settings.second_read_model, seed_base=1000),
         max_concurrency=settings.max_concurrency,
         extraction_version=extraction_version(settings),
         force=force,

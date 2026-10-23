@@ -16,8 +16,11 @@ from sdi.loaders import DocumentContent
 
 
 class GeminiExtractor:
-    def __init__(self, model: str):
+    def __init__(self, model: str, *, seed_base: int = 0):
+        # A second read can use the same model as the first; without its own seeds it would
+        # send the identical request and the LLM cache would replay the first read to it.
         self._model = model
+        self._seed_base = seed_base
         self._attempts: dict[str, int] = {}
         self._lock = threading.Lock()
 
@@ -29,7 +32,7 @@ class GeminiExtractor:
         with self._lock:
             attempt = self._attempts.get(content.source_path, 0)
             self._attempts[content.source_path] = attempt + 1
-        llm = ChatGoogleGenerativeAI(model=self._model, seed=attempt or None)
+        llm = ChatGoogleGenerativeAI(model=self._model, seed=self._seed_base + attempt or None)
         result = llm.with_structured_output(Quotation).invoke(
             [SystemMessage(EXTRACTION_PROMPT), _document_message(content)]
         )
