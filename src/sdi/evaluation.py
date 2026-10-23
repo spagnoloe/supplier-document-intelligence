@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from sdi.read_model import LineView, ReadModel
+from sdi.validation import ReasonCode
 
 # Numbers within 0.5% of the gold value count as correct: documents round, readers don't.
 NUMBER_TOLERANCE = 0.005
@@ -44,8 +45,9 @@ class FieldAccuracy(BaseModel):
 
 
 class Flagging(BaseModel):
-    """Wrong line fields on matched lines, and how many of them were flagged: failed by
-    verification or named by a Review reason. An unflagged wrong field fails silently."""
+    """Wrong fields (line fields on matched lines, and Quotation terms), and how many of them
+    were flagged: failed by verification or named by a Review reason. An unflagged wrong
+    field fails silently."""
 
     wrong: int = 0
     flagged: int = 0
@@ -73,7 +75,7 @@ class Scores(BaseModel):
 
 class WrongField(BaseModel):
     source: str
-    line_no: int
+    line_no: int | None  # None for a Quotation term
     field: str
     expected: object
     actual: object
@@ -106,6 +108,23 @@ def score(gold: list[GoldSource], read_model: ReadModel) -> EvalReport:
         pairs = match_lines(source.lines, lines)
         checked = {line.id: _checked_fields(read_model, line) for line in lines}
         flags = {line_id: flagged for line_id, (_, flagged) in checked.items()}
+        source_flags = set().union(*flags.values()) | _flagged_terms(lines)
+        term_outcomes = []  # (field, correct, flagged) per scored Quotation term
+        for field, expected in source.quotation.items():
+            actual = getattr(lines[0], field) if lines else None
+            correct = matches(field, expected, actual)
+            term_outcomes.append((field, correct, field in source_flags))
+            if not correct:
+                wrong_fields.append(
+                    WrongField(
+                        source=source.source,
+                        line_no=None,
+                        field=field,
+                        expected=expected,
+                        actual=actual,
+                        flagged=field in source_flags,
+                    )
+                )
         outcomes = []  # (field, correct, has a value, flagged) per scored line field
         for gold_line, line in pairs:
             for field, expected in gold_line.items():
@@ -129,9 +148,11 @@ def score(gold: list[GoldSource], read_model: ReadModel) -> EvalReport:
             scores.lines.found += len(pairs)
             scores.lines.missed += len(source.lines) - len(pairs)
             scores.lines.extra += len(lines) - len(pairs)
-            for field, expected in source.quotation.items():
-                actual = getattr(lines[0], field) if lines else None
-                _count(scores.quotation_fields, field, matches(field, expected, actual))
+            for field, correct, flagged in term_outcomes:
+                _count(scores.quotation_fields, field, correct)
+                if not correct:
+                    scores.flagging.wrong += 1
+                    scores.flagging.flagged += flagged
             for field, correct, has_value, flagged in outcomes:
                 _count(scores.fields, field, correct)
                 if not correct:
@@ -146,6 +167,22 @@ def score(gold: list[GoldSource], read_model: ReadModel) -> EvalReport:
             load.fields += sum(len(fields) for fields, _ in checked.values())
             load.flagged_fields += sum(len(flagged) for _, flagged in checked.values())
     return EvalReport(by_type=dict(by_type), overall=overall, wrong_fields=wrong_fields)
+
+
+# Review reasons about a Quotation term that name no field.
+_TERM_REASONS: dict[str, str] = {
+    ReasonCode.NO_QUOTE_REFERENCE: "quote_ref",
+    ReasonCode.NO_SUPPLIER: "supplier",
+}
+
+
+def _flagged_terms(lines: list[LineView]) -> set[str]:
+    return {
+        _TERM_REASONS[r.code]
+        for line in lines
+        for r in line.review_reasons
+        if r.code in _TERM_REASONS
+    }
 
 
 def _checked_fields(read_model: ReadModel, line: LineView) -> tuple[set[str], set[str]]:
@@ -244,3 +281,101 @@ def _norm(value: object) -> str:
     if value is None:
         return ""
     return " ".join("".join(c if c.isalnum() else " " for c in str(value).lower()).split())
+
+
+def format_report(report: EvalReport) -> str:
+    """The four metric groups as Markdown tables, one column or row per Source type."""
+    columns = {**dict(sorted(report.by_type.items())), "all": report.overall}
+    out = ["# Eval results", ""]
+
+    out += ["## 1. Line matching", ""]
+    out += _table(
+        ["Source type", "Expected", "Found", "Missed", "Extra"],
+        [
+            [name, s.lines.expected, s.lines.found, s.lines.missed, s.lines.extra]
+            for name, s in columns.items()
+        ],
+    )
+
+    out += ["## 2. Field accuracy (matched lines)", ""]
+    out += _table(
+        ["Source type", "Line fields", "Quotation terms"],
+        [
+            [name, _ratio(*_total(s.fields)), _ratio(*_total(s.quotation_fields))]
+            for name, s in columns.items()
+        ],
+    )
+    for title, attr in (("Line field", "fields"), ("Quotation term", "quotation_fields")):
+        names = sorted({f for s in columns.values() for f in getattr(s, attr)})
+        out += _table(
+            [title, *columns],
+            [
+                [
+                    field,
+                    *(
+                        _ratio(a.correct, a.scored) if (a := getattr(s, attr).get(field)) else "-"
+                        for s in columns.values()
+                    ),
+                ]
+                for field in names
+            ],
+        )
+
+    out += ["## 3. Flagging quality", ""]
+    out += _table(
+        ["Source type", "Wrong fields flagged"],
+        [[name, _ratio(s.flagging.flagged, s.flagging.wrong)] for name, s in columns.items()],
+    )
+
+    out += ["## 4. Review load", ""]
+    out += _table(
+        ["Source type", "Lines needs_review", "Fields flagged", "Flags on correct fields"],
+        [
+            [
+                name,
+                _ratio(s.review_load.needs_review, s.review_load.lines),
+                _ratio(s.review_load.flagged_fields, s.review_load.fields),
+                _ratio(s.review_load.flagged_correct_fields, s.review_load.correct_fields),
+            ]
+            for name, s in columns.items()
+        ],
+    )
+
+    out += ["## Wrong fields", ""]
+    out += _table(
+        ["Source", "Line", "Field", "Expected", "Extracted", "Flagged"],
+        [
+            [
+                w.source,
+                w.line_no or "-",
+                w.field,
+                _cell(w.expected),
+                _cell(w.actual),
+                _yes(w.flagged),
+            ]
+            for w in report.wrong_fields
+        ],
+    )
+    return "\n".join(out)
+
+
+def _total(fields: dict[str, FieldAccuracy]) -> tuple[int, int]:
+    return sum(a.correct for a in fields.values()), sum(a.scored for a in fields.values())
+
+
+def _ratio(part: int, whole: int) -> str:
+    return f"{part}/{whole} ({part / whole:.0%})" if whole else "-"
+
+
+def _yes(flag: bool) -> str:
+    return "yes" if flag else "**no**"
+
+
+def _cell(value: object) -> str:
+    return json.dumps(value).replace("|", "\\|")
+
+
+def _table(header: list[str], rows: list[list[object]]) -> list[str]:
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    lines += ["| " + " | ".join(str(cell) for cell in row) + " |" for row in rows]
+    return [*lines, ""]

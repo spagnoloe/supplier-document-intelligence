@@ -139,6 +139,9 @@ def test_scores_quotation_fields_once_per_source(write_source, store, read_model
         "quote_ref": (0, 1),
         "currency": (1, 1),
     }
+    assert [(w.line_no, w.field, w.expected, w.actual) for w in report.wrong_fields] == [
+        (None, "quote_ref", "Q-2", "Q-1")
+    ]
 
 
 def test_reports_the_share_of_wrong_fields_that_were_flagged(write_source, store, read_model):
