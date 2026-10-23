@@ -1,6 +1,6 @@
 import json
 
-from conftest import FakeExtractor, InMemoryFxSource, make_quotation
+from conftest import FakeExtractor, InMemoryFxSource, make_quotation, make_text_pdf
 from langchain_core.exceptions import OutputParserException
 
 from sdi.pipeline import ingest
@@ -100,3 +100,19 @@ def test_structured_output_failure_gives_up_after_bounded_attempts(write_source,
     assert status.status == "failed"
     assert "invalid JSON" in status.error
     assert extractor.calls_for("hopeless.json") == 3
+
+
+def test_text_pdf_reaches_extractor_as_its_text(write_source, store, read_model):
+    source = write_source(
+        "offer.pdf", make_text_pdf("Quotation Q-1", "Alpha 500 mg tablets (box of 10) 1.00")
+    )
+    extractor = FakeExtractor({"offer.pdf": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert "Quotation Q-1" in received.text
+    assert "Alpha 500 mg tablets (box of 10) 1.00" in received.text
+    assert received.images == []
+    [status] = read_model.document_statuses()
+    assert (status.file_type, status.status, status.line_count) == ("pdf", "processed", 1)

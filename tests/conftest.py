@@ -60,6 +60,30 @@ def make_quotation(*products: str, document_type: str = "quotation") -> Quotatio
     )
 
 
+def make_text_pdf(*lines: str) -> bytes:
+    """A one-page PDF with each line drawn as text, built by hand to avoid a writer dependency."""
+    escaped = [line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") for line in lines]
+    stream = "BT /F1 12 Tf 72 720 Td 14 TL " + " ".join(f"({t}) '" for t in escaped) + " ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
+        " /Resources << /Font << /F1 5 0 R >> >> >>",
+        f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = "%PDF-1.4\n"
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n{body}\nendobj\n"
+    xref_at = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n"
+    out += "".join(f"{offset:010d} 00000 n \n" for offset in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n"
+    return out.encode("latin-1")
+
+
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     return tmp_path / "sdi.db"
@@ -76,13 +100,16 @@ def store(db_path: Path) -> Store:
 
 
 @pytest.fixture
-def write_source(tmp_path: Path) -> Callable[[str, str], Path]:
+def write_source(tmp_path: Path) -> Callable[[str, str | bytes], Path]:
     folder = tmp_path / "inbox"
     folder.mkdir()
 
-    def write(name: str, text: str) -> Path:
+    def write(name: str, content: str | bytes) -> Path:
         path = folder / name
-        path.write_text(text)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content)
         return path
 
     return write
