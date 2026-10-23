@@ -80,10 +80,14 @@ The scanned-PDF fallback is generic (low text yield). The pack has no scanned PD
 ## 4. Extensibility proof: the Excel loader
 
 - Built **after** the pipeline works, in **one isolated commit** (ideally its own PR).
-- That diff touches only `loaders/excel.py` and a synthetic `samples/price_list.xlsx`, with rows copied from a PDF quote so the extracted values cross-check.
+- That diff touches only `loaders/excel_loader.py` and a synthetic `samples/price_list.xlsx`, with rows copied from a PDF quote so the extracted values cross-check.
 - If it forces changes elsewhere, that's a design leak to fix before submission.
 
+**Result: commit `51f20e9`.** Besides the loader and the sample, the diff holds the registry import line, the `openpyxl` dependency (plus its type stubs) and the ingest-seam tests. No other module changed. The sample copies the six lines of a PDF proforma into a two-sheet price-list layout. Ingested next to that PDF, all six lines matched on every line field and on the header terms.
+
 **Known limitation:** tables are serialized whole into the prompt. That's fine for small files. Large sheets cost tokens and risk dropped rows. The production path is an LLM-proposed column mapping cached per structure fingerprint. It's described, not built.
+
+**Known limitation:** cells are read as their stored values. A formula cell with no saved result (files written by scripts rather than Excel) loads as empty, and number formats are lost (a `3%` cell reads as `0.03`). Production would flag uncomputed formulas and render cells with their display format.
 
 ---
 
@@ -299,7 +303,7 @@ Costs to record for the write-up: state-typing boilerplate, overkill for a mostl
 
 ```
 src/sdi/
-  loaders/        registry + pdf, json, email, image (later: excel)
+  loaders/        registry + pdf, json, email, image, excel
   extraction/     schema.py, prompt.py, gemini.py (the extractor)
   validation/     checks + review reasons
   reconcile/      conflicts + price comparison
