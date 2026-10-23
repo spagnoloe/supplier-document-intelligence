@@ -49,21 +49,19 @@ def reconcile(lines: Sequence[LineView]) -> tuple[list[ConflictRecord], Reasons]
     reasons: Reasons = []
     quotations: dict[tuple[str, str], list[LineView]] = defaultdict(list)
     for line in lines:
-        ref = _quote_ref_key(line.quote_ref)
-        if ref:
-            quotations[(_supplier_key(line.supplier), ref)].append(line)
-        else:
-            reasons.append(
-                (
-                    line.id,
-                    ReviewReason(
-                        code=ReasonCode.NO_QUOTE_REFERENCE,
-                        field=None,
-                        message="No quote reference, so this Source isn't linked to other "
-                        "Sources of the same Quotation",
-                    ),
-                )
-            )
+        supplier, ref = _supplier_key(line.supplier), _quote_ref_key(line.quote_ref)
+        if supplier and ref:
+            quotations[(supplier, ref)].append(line)
+            continue
+        code, missing = (
+            (ReasonCode.NO_SUPPLIER, "supplier")
+            if not supplier
+            else (ReasonCode.NO_QUOTE_REFERENCE, "quote reference")
+        )
+        message = (
+            f"No {missing}, so this Source isn't linked to other Sources of the same Quotation"
+        )
+        reasons.append((line.id, ReviewReason(code=code, field=None, message=message)))
     conflicts = [c for group in quotations.values() for c in _conflicts(group)]
     for conflict in conflicts:
         message = _conflict_message(conflict, {line.id: line for line in lines})

@@ -273,3 +273,18 @@ def test_references_differing_only_where_separators_fall_are_not_linked(
     ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
 
     assert read_model.conflicts() == []
+
+
+def test_source_without_supplier_is_flagged_and_never_linked(write_source, store, read_model):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5), supplier=None),
+        "b.json": quotation(amoxicillin(15.2), supplier=None),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
+    for line in read_model.quotation_lines():
+        assert [r.code for r in line.review_reasons] == ["NO_SUPPLIER"]
+        assert line.review_status == "auto_ok"

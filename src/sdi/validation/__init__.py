@@ -34,6 +34,7 @@ class ReasonCode(StrEnum):
     # Raised by reconciliation across Sources, not by verification of one Source.
     IN_CONFLICT = "IN_CONFLICT"
     NO_QUOTE_REFERENCE = "NO_QUOTE_REFERENCE"
+    NO_SUPPLIER = "NO_SUPPLIER"
 
 
 class ReviewReason(BaseModel):
