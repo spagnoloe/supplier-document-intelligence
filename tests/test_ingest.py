@@ -2,10 +2,12 @@ import json
 import sqlite3
 from datetime import date
 
+import pytest
 from conftest import (
     FakeExtractor,
     InMemoryFxSource,
     make_email,
+    make_image,
     make_quotation,
     make_text_pdf,
     make_workbook,
@@ -258,3 +260,17 @@ def test_workbook_without_cell_values_reaches_extractor_with_no_text(write_sourc
 
     [received] = extractor.received
     assert received.text is None
+
+
+@pytest.mark.parametrize("name", ["photo.png", "photo.jpg", "photo.JPEG"])
+def test_image_file_reaches_extractor_as_that_image(write_source, store, read_model, name):
+    image = make_image()
+    source = write_source(name, image)
+    extractor = FakeExtractor({name: make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert (received.text, received.images) == (None, [image])
+    [status] = read_model.document_statuses()
+    assert (status.status, status.line_count) == ("processed", 1)
