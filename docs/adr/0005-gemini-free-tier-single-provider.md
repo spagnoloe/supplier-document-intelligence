@@ -11,3 +11,4 @@ The pipeline calls Google Gemini through LangChain using a free-tier API key: a 
 ## Consequences
 
 - Gemini free-tier inputs may be used by Google to improve its products. That's acceptable for the synthetic pack and unacceptable for real supplier data.
+- Free-tier daily quotas are small: 20 requests a day for the second-read model. When it ran out during the eval, the second read fell back to the extraction model through `SDI_SECOND_READ_MODEL`. Same-model reads would hit the LLM cache as identical requests, so the second reader uses its own seeds.

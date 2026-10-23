@@ -3,6 +3,7 @@
 Measures the real extractor (Gemini, via the LLM cache) against a hand-labelled gold set for the sample Sources.
 
 ```sh
+export SDI_SECOND_READ_MODEL=gemini-3.5-flash-lite   # as the committed results were run; see below
 uv run sdi eval data samples                 # may call the model for uncached requests
 uv run sdi eval data samples --cached-only   # never calls the model; reproducible and free
 ```
@@ -18,7 +19,7 @@ Each run ingests into a fresh temporary database, so the numbers always reflect 
 - `{"any_of": [...]}` accepts any listed value: partly visible scan values, or equivalent dosage-form terms.
 - `notes` explains each judgement call.
 
-**Status: drafted by the agent, not yet checked by the author.** Don't use it to tune anything until the check is recorded.
+**Status: drafted by the agent, checked by the author.**
 
 ## Metrics
 
@@ -31,4 +32,6 @@ Reported per Source type (the gold file's `source_type`) and overall.
 
 ## Caveat on the committed results
 
-The committed results were produced with `--cached-only`. While the cache was being filled, the free-tier daily quota for the second-read model ran out, so image Sources (and the PDF line whose checks failed) have no second read and carry `SECOND_READ_UNAVAILABLE`. That inflates image review load. Once the quota resets, rerun without `--cached-only` to cache the second reads, then rerun with it and commit the results.
+The second reads in the committed results come from the extraction model (`gemini-3.5-flash-lite`), not the stronger default second-read model. That model's free-tier daily quota (20 requests) ran out while the cache was being filled and hadn't reset when the results were due. The second reader draws its own seeds, so it samples a fresh read instead of getting the first read back from the cache. But two reads from the same model share more of their errors than reads from a lighter and a stronger model, so second-read agreement here is weaker evidence than the design intends.
+
+Two runs with `--cached-only` gave byte-identical results with 0 cache misses. To reproduce them, keep the `SDI_SECOND_READ_MODEL` override above. Without it, the second reads aren't cached and a `--cached-only` run reports them unavailable.
