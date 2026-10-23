@@ -225,8 +225,11 @@ Both pack images are scans of the Andina PDF, so expected values come from the c
 ## 8. Reconciliation (ADR-0003)
 
 **Conflicts:**
-- Sources are linked to the same Quotation by supplier + quote reference. A Source with no readable reference stays its own Quotation, with reason `NO_QUOTE_REFERENCE`.
-- Lines are matched within a Quotation. Disagreeing fields go into the `conflicts` table, and the lines go to review.
+- Sources are linked to the same Quotation by supplier + quote reference, both normalized: case, accents and punctuation ignored, legal forms (Ltd, S.A., GmbH, ...) dropped from the supplier, separators dropped from the reference. A Source with no readable reference stays its own Quotation, with reason `NO_QUOTE_REFERENCE`. That reason is a note and doesn't force review.
+- Lines are matched within a Quotation by Product key (INN + strength set, plus dosage form). A Source quoting one Product more than once (e.g. two pack sizes) has its n-th line for that Product matched with the n-th of the other Sources, in document order.
+- Matched lines are compared on brand, UOM, pack size, prices, currency, discount, quantity, line total and tiers. A field stated differently becomes a Conflict in `conflicts` / `conflict_values`, with each Source's value, and those lines go to review with `IN_CONFLICT`. A value one Source leaves null (e.g. glare-hidden) isn't a disagreement: verification already flags it, and counting it would push the clean copy into review too.
+- Reconciliation runs at the end of every `ingest` over all stored Sources and replaces its earlier outcome. Lines keep their own `verification_status` next to `review_status`, so a re-ingested Source can't leave stale flags on lines it used to disagree with.
+- Quotation-level terms (Incoterm, validity, RFQ reference) aren't compared yet; a disagreement there isn't tied to one line.
 - In the pack, the Andina PDF and its two scans are three Sources of one Quotation.
 
 **Price comparison:**
