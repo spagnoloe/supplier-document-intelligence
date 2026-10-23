@@ -4,7 +4,7 @@ ingest and the read model."""
 from datetime import date
 
 import pytest
-from conftest import InMemoryFxSource, make_text_pdf
+from conftest import FakeExtractor, InMemoryFxSource, make_text_pdf
 from test_review import (
     LINE_EVIDENCE,
     SOURCE,
@@ -19,6 +19,7 @@ from test_review import (
 
 from sdi.extraction.schema import PriceTier
 from sdi.fx import FxRate
+from sdi.pipeline import ingest
 
 
 def test_unit_price_is_calculated_from_a_stated_pack_price(write_source, store, read_model):
@@ -246,3 +247,13 @@ def test_tiers_next_to_a_stated_price_are_still_flagged(write_source, store, rea
     [line] = read_model.quotation_lines()
     assert line.headline_pack_price == 1250.0
     assert ("TIERED_PRICING", None) in reasons_of(line)
+
+
+def test_missing_rate_is_asked_once_per_run(write_source, store, read_model):
+    fx = InMemoryFxSource()
+    source = write_source("offer.json", EUR_SOURCE)
+    quotation = eur_quotation()
+    quotation.lines.append(make_line())
+    ingest([source], FakeExtractor({"offer.json": quotation}), fx, store)
+
+    assert fx.requests == [("EUR", ISSUED)]

@@ -92,11 +92,15 @@ def _cached(fx_source: FxSource, store: Store) -> FxSource:
     """Rates are read from the store first; a fetched rate is saved, so re-runs need no
     network. A missing rate isn't saved: the next run asks again."""
 
+    missing: set[tuple[str, date]] = set()  # asked once per run, so an offline run doesn't stall
+
     def rate(currency: str, on: date) -> FxRate | None:
         cached = store.fx_rate(currency, on)
-        if cached is None:
+        if cached is None and (currency, on) not in missing:
             cached = fx_source(currency, on)
-            if cached is not None:
+            if cached is None:
+                missing.add((currency, on))
+            else:
                 store.save_fx_rate(currency, on, cached)
         return cached
 
