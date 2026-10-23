@@ -44,6 +44,8 @@ class LineView(BaseModel):
     evidence: list[FieldEvidence]
     review_status: ReviewStatus
     review_reasons: list[ReviewReason]
+    headline_unit_price: float | None
+    headline_pack_price: float | None
 
 
 class FieldDetail(BaseModel):
@@ -66,6 +68,7 @@ _LINES_QUERY = """
            COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
            l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence,
            l.review_status, l.field_verification, q.evidence AS quotation_evidence,
+           l.headline_unit_price, l.headline_pack_price,
            (SELECT json_group_array(json_object('code', r.code, 'field', r.field,
                                                 'message', r.message))
             FROM (SELECT * FROM review_reasons WHERE line_id = l.id ORDER BY id) r

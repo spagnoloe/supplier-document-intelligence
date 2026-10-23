@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sdi.extraction.schema import FieldEvidence, LineField, Quotation, QuotationLine
 from sdi.loaders import DocumentContent
 from sdi.validation.evidence import SourceText, numbers_in
+from sdi.validation.pricing import DerivedPrices, derive_prices
 
 FieldResult = Literal["verified", "unverified", "failed"]
 ReviewStatus = Literal["needs_review", "auto_ok"]
@@ -43,6 +44,7 @@ class LineVerification(BaseModel):
     fields: dict[str, FieldResult]
     reasons: list[ReviewReason]
     review_status: ReviewStatus
+    prices: DerivedPrices
 
 
 # A line needs at least one of these prices, and each one stated is critical.
@@ -91,14 +93,16 @@ class _LineChecks:
         self._forced_review = True
         self.note(code, field, message)
 
-    def result(self) -> LineVerification:
+    def result(self, prices: DerivedPrices) -> LineVerification:
         critical_failed = any(
             result == "failed" for field, result in self.fields.items() if field in CRITICAL_FIELDS
         )
         status: ReviewStatus = (
             "needs_review" if critical_failed or self._forced_review else "auto_ok"
         )
-        return LineVerification(fields=self.fields, reasons=self.reasons, review_status=status)
+        return LineVerification(
+            fields=self.fields, reasons=self.reasons, review_status=status, prices=prices
+        )
 
 
 def _verify_line(
@@ -116,7 +120,7 @@ def _verify_line(
     _check_rules(checks, line, quotation)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
-    return checks.result()
+    return checks.result(derive_prices(line))
 
 
 def _field_value(

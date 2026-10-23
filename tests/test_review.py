@@ -79,9 +79,17 @@ def make_quotation(
     )
 
 
-def ingest_one(write_source, store, quotation: Quotation, text: str = SOURCE):
-    source = write_source("offer.json", text)
-    ingest([source], FakeExtractor({"offer.json": quotation}), InMemoryFxSource(), store)
+def ingest_one(
+    write_source,
+    store,
+    quotation: Quotation,
+    text: str | bytes = SOURCE,
+    *,
+    fx: InMemoryFxSource | None = None,
+    name: str = "offer.json",
+):
+    source = write_source(name, text)
+    ingest([source], FakeExtractor({name: quotation}), fx or InMemoryFxSource(), store)
     return source
 
 

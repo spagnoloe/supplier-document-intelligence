@@ -57,7 +57,9 @@ CREATE TABLE IF NOT EXISTS quotation_lines (
     revision_note TEXT,
     evidence TEXT NOT NULL,
     review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'auto_ok')),
-    field_verification TEXT NOT NULL
+    field_verification TEXT NOT NULL,
+    headline_unit_price REAL,
+    headline_pack_price REAL
 );
 -- No CHECK on code: new Review reason codes need no schema change.
 CREATE TABLE IF NOT EXISTS review_reasons (
@@ -111,6 +113,7 @@ class Store:
                         **values,
                         "review_status": verification.review_status,
                         "field_verification": verification.fields,
+                        **verification.prices.model_dump(),
                     },
                 )
                 for reason in verification.reasons:
