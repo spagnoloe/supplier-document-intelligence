@@ -93,7 +93,8 @@ def run_eval(folders: list[Path], *, gold: Path, out: Path, cached_only: bool) -
     out.with_suffix(".json").write_text(report.model_dump_json(indent=2) + "\n")
     print(markdown)
     print(f"Wrote {out.with_suffix('.md')} and {out.with_suffix('.json')}")
-    print(f"Model requests not answered from the LLM cache: {cache.misses}")
+    outcome = "failed, as --cached-only" if cached_only else "sent to the model"
+    print(f"Model requests not answered from the LLM cache: {cache.misses} ({outcome})")
 
 
 def _sources(folder: Path) -> list[Path]:
