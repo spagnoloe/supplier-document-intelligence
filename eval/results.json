@@ -1,0 +1,720 @@
+{
+  "by_type": {
+    "email": {
+      "lines": {
+        "expected": 3,
+        "found": 3,
+        "missed": 0,
+        "extra": 0
+      },
+      "fields": {
+        "brand_name": {
+          "correct": 2,
+          "scored": 3
+        },
+        "active_ingredients": {
+          "correct": 3,
+          "scored": 3
+        },
+        "dosage_form": {
+          "correct": 3,
+          "scored": 3
+        },
+        "uom": {
+          "correct": 3,
+          "scored": 3
+        },
+        "pack_size": {
+          "correct": 3,
+          "scored": 3
+        },
+        "unit_price": {
+          "correct": 3,
+          "scored": 3
+        },
+        "pack_price": {
+          "correct": 3,
+          "scored": 3
+        },
+        "discount_pct": {
+          "correct": 3,
+          "scored": 3
+        },
+        "line_total": {
+          "correct": 3,
+          "scored": 3
+        },
+        "price_tiers": {
+          "correct": 3,
+          "scored": 3
+        }
+      },
+      "quotation_fields": {
+        "supplier": {
+          "correct": 1,
+          "scored": 1
+        },
+        "quote_ref": {
+          "correct": 1,
+          "scored": 1
+        },
+        "currency": {
+          "correct": 1,
+          "scored": 1
+        },
+        "incoterm": {
+          "correct": 1,
+          "scored": 1
+        },
+        "incoterm_place": {
+          "correct": 1,
+          "scored": 1
+        }
+      },
+      "flagging": {
+        "wrong": 1,
+        "flagged": 0
+      },
+      "review_load": {
+        "lines": 3,
+        "needs_review": 1,
+        "fields": 24,
+        "flagged_fields": 1,
+        "correct_fields": 17,
+        "flagged_correct_fields": 1
+      }
+    },
+    "pdf": {
+      "lines": {
+        "expected": 11,
+        "found": 11,
+        "missed": 0,
+        "extra": 0
+      },
+      "fields": {
+        "brand_name": {
+          "correct": 11,
+          "scored": 11
+        },
+        "active_ingredients": {
+          "correct": 11,
+          "scored": 11
+        },
+        "dosage_form": {
+          "correct": 10,
+          "scored": 11
+        },
+        "uom": {
+          "correct": 11,
+          "scored": 11
+        },
+        "pack_size": {
+          "correct": 11,
+          "scored": 11
+        },
+        "unit_price": {
+          "correct": 11,
+          "scored": 11
+        },
+        "pack_price": {
+          "correct": 11,
+          "scored": 11
+        },
+        "discount_pct": {
+          "correct": 11,
+          "scored": 11
+        },
+        "quantity": {
+          "correct": 6,
+          "scored": 6
+        },
+        "line_total": {
+          "correct": 11,
+          "scored": 11
+        },
+        "price_tiers": {
+          "correct": 11,
+          "scored": 11
+        }
+      },
+      "quotation_fields": {
+        "supplier": {
+          "correct": 2,
+          "scored": 2
+        },
+        "quote_ref": {
+          "correct": 2,
+          "scored": 2
+        },
+        "currency": {
+          "correct": 2,
+          "scored": 2
+        },
+        "incoterm": {
+          "correct": 2,
+          "scored": 2
+        },
+        "incoterm_place": {
+          "correct": 2,
+          "scored": 2
+        }
+      },
+      "flagging": {
+        "wrong": 1,
+        "flagged": 0
+      },
+      "review_load": {
+        "lines": 11,
+        "needs_review": 5,
+        "fields": 105,
+        "flagged_fields": 8,
+        "correct_fields": 86,
+        "flagged_correct_fields": 6
+      }
+    },
+    "spreadsheet": {
+      "lines": {
+        "expected": 6,
+        "found": 6,
+        "missed": 0,
+        "extra": 0
+      },
+      "fields": {
+        "brand_name": {
+          "correct": 6,
+          "scored": 6
+        },
+        "active_ingredients": {
+          "correct": 6,
+          "scored": 6
+        },
+        "dosage_form": {
+          "correct": 6,
+          "scored": 6
+        },
+        "uom": {
+          "correct": 6,
+          "scored": 6
+        },
+        "pack_size": {
+          "correct": 6,
+          "scored": 6
+        },
+        "unit_price": {
+          "correct": 6,
+          "scored": 6
+        },
+        "pack_price": {
+          "correct": 6,
+          "scored": 6
+        },
+        "discount_pct": {
+          "correct": 6,
+          "scored": 6
+        },
+        "quantity": {
+          "correct": 6,
+          "scored": 6
+        },
+        "line_total": {
+          "correct": 6,
+          "scored": 6
+        },
+        "price_tiers": {
+          "correct": 6,
+          "scored": 6
+        }
+      },
+      "quotation_fields": {
+        "supplier": {
+          "correct": 1,
+          "scored": 1
+        },
+        "quote_ref": {
+          "correct": 1,
+          "scored": 1
+        },
+        "currency": {
+          "correct": 1,
+          "scored": 1
+        },
+        "incoterm": {
+          "correct": 1,
+          "scored": 1
+        },
+        "incoterm_place": {
+          "correct": 1,
+          "scored": 1
+        }
+      },
+      "flagging": {
+        "wrong": 0,
+        "flagged": 0
+      },
+      "review_load": {
+        "lines": 6,
+        "needs_review": 3,
+        "fields": 60,
+        "flagged_fields": 3,
+        "correct_fields": 52,
+        "flagged_correct_fields": 1
+      }
+    },
+    "json": {
+      "lines": {
+        "expected": 11,
+        "found": 11,
+        "missed": 0,
+        "extra": 0
+      },
+      "fields": {
+        "brand_name": {
+          "correct": 11,
+          "scored": 11
+        },
+        "active_ingredients": {
+          "correct": 11,
+          "scored": 11
+        },
+        "dosage_form": {
+          "correct": 11,
+          "scored": 11
+        },
+        "uom": {
+          "correct": 11,
+          "scored": 11
+        },
+        "pack_size": {
+          "correct": 11,
+          "scored": 11
+        },
+        "unit_price": {
+          "correct": 11,
+          "scored": 11
+        },
+        "pack_price": {
+          "correct": 11,
+          "scored": 11
+        },
+        "discount_pct": {
+          "correct": 11,
+          "scored": 11
+        },
+        "line_total": {
+          "correct": 11,
+          "scored": 11
+        },
+        "price_tiers": {
+          "correct": 11,
+          "scored": 11
+        },
+        "quantity": {
+          "correct": 4,
+          "scored": 4
+        }
+      },
+      "quotation_fields": {
+        "supplier": {
+          "correct": 3,
+          "scored": 3
+        },
+        "quote_ref": {
+          "correct": 3,
+          "scored": 3
+        },
+        "currency": {
+          "correct": 3,
+          "scored": 3
+        },
+        "incoterm": {
+          "correct": 3,
+          "scored": 3
+        },
+        "incoterm_place": {
+          "correct": 3,
+          "scored": 3
+        }
+      },
+      "flagging": {
+        "wrong": 0,
+        "flagged": 0
+      },
+      "review_load": {
+        "lines": 11,
+        "needs_review": 0,
+        "fields": 84,
+        "flagged_fields": 0,
+        "correct_fields": 70,
+        "flagged_correct_fields": 0
+      }
+    },
+    "image": {
+      "lines": {
+        "expected": 12,
+        "found": 12,
+        "missed": 0,
+        "extra": 0
+      },
+      "fields": {
+        "brand_name": {
+          "correct": 11,
+          "scored": 12
+        },
+        "active_ingredients": {
+          "correct": 12,
+          "scored": 12
+        },
+        "dosage_form": {
+          "correct": 11,
+          "scored": 12
+        },
+        "uom": {
+          "correct": 12,
+          "scored": 12
+        },
+        "pack_size": {
+          "correct": 11,
+          "scored": 12
+        },
+        "unit_price": {
+          "correct": 10,
+          "scored": 12
+        },
+        "pack_price": {
+          "correct": 12,
+          "scored": 12
+        },
+        "discount_pct": {
+          "correct": 9,
+          "scored": 12
+        },
+        "quantity": {
+          "correct": 6,
+          "scored": 12
+        },
+        "line_total": {
+          "correct": 6,
+          "scored": 12
+        },
+        "price_tiers": {
+          "correct": 12,
+          "scored": 12
+        }
+      },
+      "quotation_fields": {
+        "supplier": {
+          "correct": 2,
+          "scored": 2
+        },
+        "quote_ref": {
+          "correct": 1,
+          "scored": 2
+        },
+        "currency": {
+          "correct": 2,
+          "scored": 2
+        },
+        "incoterm": {
+          "correct": 2,
+          "scored": 2
+        },
+        "incoterm_place": {
+          "correct": 2,
+          "scored": 2
+        }
+      },
+      "flagging": {
+        "wrong": 21,
+        "flagged": 6
+      },
+      "review_load": {
+        "lines": 12,
+        "needs_review": 12,
+        "fields": 115,
+        "flagged_fields": 62,
+        "correct_fields": 75,
+        "flagged_correct_fields": 32
+      }
+    }
+  },
+  "overall": {
+    "lines": {
+      "expected": 43,
+      "found": 43,
+      "missed": 0,
+      "extra": 0
+    },
+    "fields": {
+      "brand_name": {
+        "correct": 41,
+        "scored": 43
+      },
+      "active_ingredients": {
+        "correct": 43,
+        "scored": 43
+      },
+      "dosage_form": {
+        "correct": 41,
+        "scored": 43
+      },
+      "uom": {
+        "correct": 43,
+        "scored": 43
+      },
+      "pack_size": {
+        "correct": 42,
+        "scored": 43
+      },
+      "unit_price": {
+        "correct": 41,
+        "scored": 43
+      },
+      "pack_price": {
+        "correct": 43,
+        "scored": 43
+      },
+      "discount_pct": {
+        "correct": 40,
+        "scored": 43
+      },
+      "line_total": {
+        "correct": 37,
+        "scored": 43
+      },
+      "price_tiers": {
+        "correct": 43,
+        "scored": 43
+      },
+      "quantity": {
+        "correct": 22,
+        "scored": 28
+      }
+    },
+    "quotation_fields": {
+      "supplier": {
+        "correct": 9,
+        "scored": 9
+      },
+      "quote_ref": {
+        "correct": 8,
+        "scored": 9
+      },
+      "currency": {
+        "correct": 9,
+        "scored": 9
+      },
+      "incoterm": {
+        "correct": 9,
+        "scored": 9
+      },
+      "incoterm_place": {
+        "correct": 9,
+        "scored": 9
+      }
+    },
+    "flagging": {
+      "wrong": 23,
+      "flagged": 6
+    },
+    "review_load": {
+      "lines": 43,
+      "needs_review": 21,
+      "fields": 388,
+      "flagged_fields": 74,
+      "correct_fields": 300,
+      "flagged_correct_fields": 40
+    }
+  },
+  "wrong_fields": [
+    {
+      "source": "RE_RFQ-2026-0244_Novara_quotation.eml",
+      "line_no": 3,
+      "field": "brand_name",
+      "expected": "Dexafar 4 mg/mL",
+      "actual": "Dexafar",
+      "flagged": false
+    },
+    {
+      "source": "mekong_pharma_quotation_MKP-2026-0812.pdf",
+      "line_no": 3,
+      "field": "dosage_form",
+      "expected": {
+        "any_of": [
+          "Pressurised inhalation, suspension",
+          "Pressurised inhalation suspension",
+          "Inhalation aerosol"
+        ]
+      },
+      "actual": "Pressurised inhalation canister suspension",
+      "flagged": false
+    },
+    {
+      "source": "scan_02_lowres_fax_andina_p1.png",
+      "line_no": 1,
+      "field": "unit_price",
+      "expected": 0.0091,
+      "actual": 0.0094,
+      "flagged": true
+    },
+    {
+      "source": "scan_02_lowres_fax_andina_p1.png",
+      "line_no": 4,
+      "field": "dosage_form",
+      "expected": "Powder for oral suspension",
+      "actual": "Oral suspension",
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": null,
+      "field": "quote_ref",
+      "expected": "FA-COT-2026-118",
+      "actual": "FA-COT-2026-158",
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 1,
+      "field": "quantity",
+      "expected": null,
+      "actual": 52462.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 1,
+      "field": "line_total",
+      "expected": 52962.0,
+      "actual": null,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 3,
+      "field": "pack_size",
+      "expected": 30,
+      "actual": null,
+      "flagged": true
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 3,
+      "field": "quantity",
+      "expected": null,
+      "actual": 46.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 3,
+      "field": "line_total",
+      "expected": 46740.0,
+      "actual": null,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 2,
+      "field": "brand_name",
+      "expected": "Amlodin 5",
+      "actual": "Ambodin 5",
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 2,
+      "field": "discount_pct",
+      "expected": 3.0,
+      "actual": 5.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 2,
+      "field": "quantity",
+      "expected": null,
+      "actual": 22.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 2,
+      "field": "line_total",
+      "expected": 22348.8,
+      "actual": null,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 4,
+      "field": "discount_pct",
+      "expected": 0.0,
+      "actual": null,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 4,
+      "field": "quantity",
+      "expected": 120000,
+      "actual": 120.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 4,
+      "field": "line_total",
+      "expected": 41400.0,
+      "actual": 41.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 5,
+      "field": "quantity",
+      "expected": 3000000,
+      "actual": 3000.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 5,
+      "field": "line_total",
+      "expected": 21090.0,
+      "actual": 21.0,
+      "flagged": false
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 6,
+      "field": "unit_price",
+      "expected": 0.412,
+      "actual": 0.432,
+      "flagged": true
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 6,
+      "field": "discount_pct",
+      "expected": 0.0,
+      "actual": 10.0,
+      "flagged": true
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 6,
+      "field": "quantity",
+      "expected": 90000,
+      "actual": 90.0,
+      "flagged": true
+    },
+    {
+      "source": "scan_03_glare_partial_andina_p1.jpg",
+      "line_no": 6,
+      "field": "line_total",
+      "expected": 37080.0,
+      "actual": 37.0,
+      "flagged": true
+    }
+  ]
+}
