@@ -6,11 +6,12 @@ and stored next to the stated values, never in place of them.
 
 from pydantic import BaseModel
 
-from sdi.extraction.schema import QuotationLine
+from sdi.extraction.schema import PriceTier, QuotationLine
 
 
 class DerivedPrices(BaseModel):
-    # The line's Unit and Pack price: as stated, or calculated from the other and Pack size.
+    # The line's Unit and Pack price: as stated (on the line, else in its lowest-volume Price
+    # tier), or calculated from the other and Pack size.
     headline_unit_price: float | None = None
     headline_pack_price: float | None = None
     # The headline prices after the stated discount; empty when no discount is stated.
@@ -18,8 +19,17 @@ class DerivedPrices(BaseModel):
     net_pack_price: float | None = None
 
 
+def headline_tier(line: QuotationLine) -> PriceTier | None:
+    """The lowest-volume priced tier, when the line states no price of its own."""
+    if line.unit_price is not None or line.pack_price is not None:
+        return None
+    priced = [t for t in line.price_tiers if t.unit_price is not None or t.pack_price is not None]
+    return min(priced, key=lambda t: t.min_qty or 0, default=None)
+
+
 def derive_prices(line: QuotationLine) -> DerivedPrices:
-    unit, pack = line.unit_price, line.pack_price
+    stated = headline_tier(line) or line
+    unit, pack = stated.unit_price, stated.pack_price
     # A Pack size the rules reject (not a positive whole number) calculates nothing.
     pack_size = line.pack_size
     if pack_size is not None and (pack_size <= 0 or not pack_size.is_integer()):

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sdi.extraction.schema import FieldEvidence, LineField, Quotation, QuotationLine
 from sdi.loaders import DocumentContent
 from sdi.validation.evidence import SourceText, numbers_in
-from sdi.validation.pricing import DerivedPrices, derive_prices
+from sdi.validation.pricing import DerivedPrices, derive_prices, headline_tier
 
 FieldResult = Literal["verified", "unverified", "failed"]
 ReviewStatus = Literal["needs_review", "auto_ok"]
@@ -32,6 +32,7 @@ class ReasonCode(StrEnum):
     INFERRED_VALUE = "INFERRED_VALUE"
     UNCLEAR_VALUE = "UNCLEAR_VALUE"
     REVISION = "REVISION"
+    TIERED_PRICING = "TIERED_PRICING"
 
 
 class ReviewReason(BaseModel):
@@ -120,6 +121,12 @@ def _verify_line(
     _check_rules(checks, line, quotation)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
+    if (tier := headline_tier(line)) is not None:
+        checks.note(
+            ReasonCode.TIERED_PRICING,
+            None,
+            f"Price depends on order volume; headline price is the tier from {tier.min_qty or 0:g}",
+        )
     return checks.result(derive_prices(line))
 
 
