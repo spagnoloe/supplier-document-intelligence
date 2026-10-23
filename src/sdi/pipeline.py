@@ -4,7 +4,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TypedDict
 
+from langchain_core.exceptions import OutputParserException
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import RetryPolicy
+from pydantic import ValidationError
 
 from sdi.extraction.schema import SUPPORTED_DOCUMENT_TYPES, Quotation
 from sdi.fx import FxSource
@@ -13,6 +16,9 @@ from sdi.store import Store
 
 Extractor = Callable[[DocumentContent], Quotation]
 
+# Malformed or schema-violating model output: worth asking again, unlike a missing file.
+STRUCTURED_OUTPUT_ERRORS = (OutputParserException, ValidationError)
+
 
 class SourceState(TypedDict, total=False):
     source_path: str
@@ -20,7 +26,7 @@ class SourceState(TypedDict, total=False):
     quotation: Quotation
 
 
-def build_graph(extractor: Extractor, store: Store):
+def build_graph(extractor: Extractor, store: Store, max_attempts: int):
     def load_node(state: SourceState) -> SourceState:
         return {"content": load(Path(state["source_path"]))}
 
@@ -37,7 +43,13 @@ def build_graph(extractor: Extractor, store: Store):
 
     graph = StateGraph(SourceState)
     graph.add_node("load", load_node)
-    graph.add_node("extract", extract_node)
+    graph.add_node(
+        "extract",
+        extract_node,
+        retry_policy=RetryPolicy(
+            max_attempts=max_attempts, initial_interval=0.1, retry_on=STRUCTURED_OUTPUT_ERRORS
+        ),
+    )
     graph.add_node("store", store_node)
     graph.add_edge(START, "load")
     graph.add_edge("load", "extract")
@@ -53,8 +65,9 @@ def ingest(
     store: Store,
     *,
     max_concurrency: int = 2,
+    max_attempts: int = 3,
 ) -> None:
-    graph = build_graph(extractor, store)
+    graph = build_graph(extractor, store, max_attempts)
     inputs = [{"source_path": str(path)} for path in sources]
     results = graph.batch(
         inputs, config={"max_concurrency": max_concurrency}, return_exceptions=True

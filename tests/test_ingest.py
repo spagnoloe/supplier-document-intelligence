@@ -1,6 +1,7 @@
 import json
 
 from conftest import FakeExtractor, InMemoryFxSource, make_quotation
+from langchain_core.exceptions import OutputParserException
 
 from sdi.pipeline import ingest
 
@@ -74,3 +75,28 @@ def test_non_quotation_document_is_skipped_as_unsupported_type(write_source, sto
         0,
     )
     assert read_model.quotation_lines() == []
+
+
+def test_structured_output_failure_is_retried_then_processed(write_source, store, read_model):
+    source = write_source("flaky.json", "{}")
+    extractor = FakeExtractor(
+        {"flaky.json": [OutputParserException("invalid JSON"), make_quotation("Alpha")]}
+    )
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [status] = read_model.document_statuses()
+    assert (status.status, status.line_count) == ("processed", 1)
+    assert extractor.calls_for("flaky.json") == 2
+
+
+def test_structured_output_failure_gives_up_after_bounded_attempts(write_source, store, read_model):
+    source = write_source("hopeless.json", "{}")
+    extractor = FakeExtractor({"hopeless.json": OutputParserException("invalid JSON")})
+
+    ingest([source], extractor, InMemoryFxSource(), store, max_attempts=3)
+
+    [status] = read_model.document_statuses()
+    assert status.status == "failed"
+    assert "invalid JSON" in status.error
+    assert extractor.calls_for("hopeless.json") == 3
