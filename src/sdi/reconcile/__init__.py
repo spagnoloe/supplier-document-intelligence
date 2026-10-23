@@ -131,8 +131,10 @@ def _supplier_key(supplier: str | None) -> str:
 
 def _quote_ref_key(quote_ref: str | None) -> str:
     # Separator characters vary between copies ("Q-12/A" vs "Q 12 A") but where they fall
-    # doesn't, so "Q1-23" and "Q12-3" stay different references.
-    return _words(quote_ref)
+    # doesn't, so "Q1-23" and "Q12-3" stay different references. A reference without a
+    # digit is a placeholder ("N/A", "TBD"), not something two Sources can share.
+    key = _words(quote_ref)
+    return key if any(c.isdigit() for c in key) else ""
 
 
 def _words(text: str | None, sep: str = " ") -> str:

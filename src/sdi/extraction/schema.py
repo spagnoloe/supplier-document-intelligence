@@ -167,7 +167,9 @@ class Quotation(BaseModel):
     )
     supplier: str | None = Field(default=None, description="Legal or trading name of the supplier.")
     quote_ref: str | None = Field(
-        default=None, description="The supplier's own reference number for this offer."
+        default=None,
+        description="The supplier's own reference number for this offer. Null if the document "
+        "gives none; never a placeholder such as 'N/A' or 'TBD'.",
     )
     rfq_ref: str | None = Field(
         default=None, description="The buyer's request-for-quotation reference, if quoted."

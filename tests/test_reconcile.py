@@ -288,3 +288,17 @@ def test_source_without_supplier_is_flagged_and_never_linked(write_source, store
     for line in read_model.quotation_lines():
         assert [r.code for r in line.review_reasons] == ["NO_SUPPLIER"]
         assert line.review_status == "auto_ok"
+
+
+def test_placeholder_reference_without_digits_counts_as_missing(write_source, store, read_model):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5), quote_ref="N/A"),
+        "b.json": quotation(amoxicillin(15.2), quote_ref="n/a"),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
+    for line in read_model.quotation_lines():
+        assert [r.code for r in line.review_reasons] == ["NO_QUOTE_REFERENCE"]
