@@ -60,9 +60,9 @@ Steps 1–4 are a LangGraph graph per Source, run with `graph.batch()` and a con
 ```python
 class DocumentContent(BaseModel):
     source_path: str
-    text: str | None        # anything readable as text
-    images: list[bytes]     # anything that must be seen
-    metadata: dict          # file type, page count, ...
+    text: str | None  # anything readable as text
+    images: list[bytes]  # anything that must be seen
+    metadata: dict  # file type, page count, ...
 ```
 
 | Source | `text` | `images` |
@@ -93,10 +93,11 @@ Quotation-level terms are separate from lines, so the LLM can't contradict itsel
 
 ```python
 class ActiveIngredient(BaseModel):
-    name_as_written: str        # evidence-checked
-    inn: str                    # WHO INN of the active moiety, salt stripped
+    name_as_written: str  # evidence-checked
+    inn: str  # WHO INN of the active moiety, salt stripped
     strength_value: float | None
-    strength_unit: str | None   # "mg", "mg/5 mL", "IU/mL", "mcg/actuation"
+    strength_unit: str | None  # "mg", "mg/5 mL", "IU/mL", "mcg/actuation"
+
 
 class PriceTier(BaseModel):
     min_qty: float | None
@@ -104,25 +105,27 @@ class PriceTier(BaseModel):
     unit_price: float | None
     pack_price: float | None
 
+
 class QuotationLine(BaseModel):
     brand_name: str | None
     active_ingredients: list[ActiveIngredient]
-    dosage_form: str | None     # standardized term, e.g. "Film-coated tablet"
-    uom: str | None             # tablet, vial, ampoule, bottle, pen ...
-    pack_size: float | None     # UOMs per Pack
-    unit_price: float | None    # only if stated
-    pack_price: float | None    # only if stated
-    currency: str | None        # overrides the Quotation currency if stated per line
+    dosage_form: str | None  # standardized term, e.g. "Film-coated tablet"
+    uom: str | None  # tablet, vial, ampoule, bottle, pen ...
+    pack_size: float | None  # UOMs per Pack
+    unit_price: float | None  # only if stated
+    pack_price: float | None  # only if stated
+    currency: str | None  # overrides the Quotation currency if stated per line
     discount_pct: float | None
-    quantity: float | None      # enables line-total cross-check
+    quantity: float | None  # enables line-total cross-check
     line_total: float | None
     price_tiers: list[PriceTier]
-    revision_note: str | None   # e.g. "corrected from 0.128 to 0.134 in P.S."
-    evidence: dict[str, str]    # field → verbatim source span
+    revision_note: str | None  # e.g. "corrected from 0.128 to 0.134 in P.S."
+    evidence: dict[str, str]  # field → verbatim source span
     certainty: dict[str, Literal["stated", "inferred", "unclear"]]
 
+
 class Quotation(BaseModel):
-    document_type: str          # quotation, price_list, order_confirmation, ...
+    document_type: str  # quotation, price_list, order_confirmation, ...
     supplier: str | None
     quote_ref: str | None
     rfq_ref: str | None

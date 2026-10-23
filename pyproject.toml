@@ -24,6 +24,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
     "ruff>=0.17.2",
 ]
@@ -37,3 +38,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore:`langchain-community` is being sunset:DeprecationWarning"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+packages = ["sdi"]
