@@ -2,7 +2,7 @@
 
 The gold set says, per Source, what a careful human reads from it. A field the gold set
 leaves out is not scored; a field it sets to null is expected to come back empty (e.g. a
-price hidden by glare). Scores are reported per Source type and overall.
+price the Source hides or doesn't state). Scores are reported per Source type and overall.
 """
 
 import json
@@ -17,11 +17,6 @@ from sdi.validation import ReasonCode
 
 # Numbers within 0.5% of the gold value count as correct: documents round, readers don't.
 NUMBER_TOLERANCE = 0.005
-
-# Terms of a Quotation, scored from its first extracted line (every line carries them).
-QUOTATION_FIELDS = ("supplier", "quote_ref", "currency", "incoterm", "incoterm_place")
-
-_TIER_FIELDS = ("min_qty", "max_qty", "unit_price", "pack_price")
 
 
 class GoldSource(BaseModel):
@@ -203,10 +198,10 @@ def matches(field: str, expected: Any, actual: Any) -> bool:
     if expected is None or actual is None:
         return expected is None and _empty(actual)
     if field == "active_ingredients":
-        return _ingredient_set(expected) == _ingredient_set(actual)
+        return _ingredient_key(expected) == _ingredient_key(actual)
     if field == "price_tiers":
         return len(expected) == len(actual) and all(
-            all(matches(k, tier.get(k), got.get(k)) for k in _TIER_FIELDS)
+            all(matches(k, value, got.get(k)) for k, value in tier.items())
             for tier, got in zip(expected, actual, strict=True)
         )
     if isinstance(expected, int | float) and isinstance(actual, int | float):
@@ -222,7 +217,7 @@ def _close(expected: float, actual: float) -> bool:
     return abs(actual - expected) <= NUMBER_TOLERANCE * abs(expected)
 
 
-def _ingredient_set(ingredients: list[dict]) -> list[tuple[str, float | None, str]]:
+def _ingredient_key(ingredients: list[dict]) -> list[tuple[str, float | None, str]]:
     """Sorted (INN, strength value, strength unit). Strengths are exact; unit spacing and
     case don't count ("mg/5 mL" = "MG / 5ml")."""
     return sorted(
@@ -245,7 +240,8 @@ def match_lines(
     expected: list[dict[str, object]], extracted: list[LineView]
 ) -> list[tuple[dict[str, object], LineView]]:
     """Pair each expected line with at most one extracted line of the same Product: the most
-    INNs in common, then the same Brand name, then the nearest position. Salt words are
+    INNs in common, then the same strengths, then the same Brand name, then the nearest
+    position. Salt words are
     ignored here (the INN itself is scored separately), so a line is still matched when its
     INN carries a salt."""
     candidates = []
@@ -254,8 +250,12 @@ def match_lines(
         for j, line in enumerate(extracted):
             shared = len(gold_inns & {_first_word(inn) for inn in line.inns})
             same_brand = _norm(gold_line.get("brand_name")) == _norm(line.brand_name) != ""
+            same_strengths = _strengths(_ingredients(gold_line)) == _strengths(
+                line.active_ingredients
+            )
             if shared or same_brand:
-                candidates.append(((-shared, not same_brand, abs(i - j)), i, j))
+                rank = (-shared, not same_strengths, not same_brand, abs(i - j))
+                candidates.append((rank, i, j))
     pairs, used_gold, used_extracted = [], set(), set()
     for _, i, j in sorted(candidates):
         if i not in used_gold and j not in used_extracted:
@@ -269,6 +269,10 @@ def _ingredients(gold_line: dict[str, object]) -> list[dict]:
     ingredients = gold_line.get("active_ingredients") or []
     assert isinstance(ingredients, list)
     return ingredients
+
+
+def _strengths(ingredients: list[dict]) -> list[float | None]:
+    return sorted((i.get("strength_value") for i in ingredients), key=lambda v: (v is None, v or 0))
 
 
 def _first_word(inn: str | None) -> str:
@@ -351,7 +355,7 @@ def format_report(report: EvalReport) -> str:
                 w.field,
                 _cell(w.expected),
                 _cell(w.actual),
-                _yes(w.flagged),
+                _flag_cell(w.flagged),
             ]
             for w in report.wrong_fields
         ],
@@ -367,7 +371,7 @@ def _ratio(part: int, whole: int) -> str:
     return f"{part}/{whole} ({part / whole:.0%})" if whole else "-"
 
 
-def _yes(flag: bool) -> str:
+def _flag_cell(flag: bool) -> str:
     return "yes" if flag else "**no**"
 
 

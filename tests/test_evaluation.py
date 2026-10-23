@@ -172,3 +172,26 @@ def test_reports_review_load_including_flags_on_correct_fields(write_source, sto
     # Every field verification ran on: the four line fields plus the inherited currency.
     assert (load.fields, load.flagged_fields) == (5, 1)
     assert (load.correct_fields, load.flagged_correct_fields) == (4, 1)
+
+
+def test_lines_of_one_ingredient_at_different_strengths_match_by_strength(
+    write_source, store, read_model
+):
+    def at(strength: float) -> QuotationLine:
+        ingredient = ActiveIngredient(
+            name_as_written="Paracetamol",
+            inn="paracetamol",
+            strength_value=strength,
+            strength_unit="mg",
+        )
+        return line("paracetamol", active_ingredients=[ingredient])
+
+    ingest_lines(write_source, store, at(250), at(500))
+    expected = [
+        {"active_ingredients": [{"inn": "paracetamol", "strength_value": s, "strength_unit": "mg"}]}
+        for s in (500, 250)
+    ]
+
+    report = score([gold(*expected)], read_model)
+
+    assert accuracy(report.overall.fields) == {"active_ingredients": (2, 2)}
