@@ -103,7 +103,10 @@ CREATE TABLE IF NOT EXISTS conflicts (
     id INTEGER PRIMARY KEY,
     supplier TEXT,
     quote_ref TEXT,
-    field TEXT NOT NULL
+    field TEXT NOT NULL,
+    -- 'line' for a field of matched lines; 'quotation' for a term of the Quotation, whose
+    -- value is stored against every line of each Source that states it.
+    scope TEXT NOT NULL DEFAULT 'line' CHECK (scope IN ('line', 'quotation'))
 );
 CREATE TABLE IF NOT EXISTS conflict_values (
     id INTEGER PRIMARY KEY,
@@ -149,11 +152,14 @@ _JSON_FIELDS = frozenset({"active_ingredients", "price_tiers"})
 
 
 class ConflictRecord(BaseModel):
-    """One field that matched lines of one Quotation disagree on, with each line's value."""
+    """One field that Sources of one Quotation disagree on, with each line's value. A
+    Quotation term's value is given for every line of each Source that states it, since the
+    term applies to all of them."""
 
     supplier: str | None
     quote_ref: str | None
     field: str
+    scope: Literal["line", "quotation"] = "line"
     values: dict[int, object]  # line id → that line's value
 
 
@@ -175,6 +181,7 @@ _BACKFILLS = {
     ("review_reasons", "origin"): "'verification'",
     ("documents", "read_as_images"): "0",
     ("documents", "extraction_id"): "lower(hex(randomblob(16)))",
+    ("conflicts", "scope"): "'line'",
 }
 
 

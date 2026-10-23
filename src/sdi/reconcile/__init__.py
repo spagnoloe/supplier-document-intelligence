@@ -3,7 +3,8 @@ and Price comparisons across Quotations.
 
 Sources are linked only by normalized supplier + quote reference, and lines within a
 Quotation are matched only by Product. A field the matched lines state differently is a
-Conflict. Nothing is merged and no value wins: the lines go to review instead.
+Conflict, and so is a Quotation term the linked Sources state differently. Nothing is merged
+and no value wins: the lines go to review instead.
 
 Lines for one Product from different Quotations form a Price comparison. Their prices
 differing is a market, not an error, so a comparison never changes a review status.
@@ -14,6 +15,7 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
 from sdi.read_model import LineView
@@ -34,6 +36,11 @@ COMPARED_FIELDS = (
     "line_total",
     "price_tiers",
 )
+
+# Quotation terms Sources can disagree on. Each applies to every line of its Source, so a
+# disagreement puts all of them in review: a different Incoterm or issue date changes what
+# every price means. Currency isn't here: it is compared as each line's effective currency.
+COMPARED_TERMS = ("incoterm", "incoterm_place", "issue_date", "valid_until", "rfq_ref")
 
 # Legal-form words dropped from supplier names, so "Acme Ltd" and "ACME Limited" link.
 _LEGAL_FORMS = frozenset(
@@ -81,7 +88,7 @@ def reconcile(lines: Sequence[LineView]) -> tuple[list[ConflictRecord], Reasons]
     conflicts = []
     for quotation_lines in quotations.values():
         groups = _matched(quotation_lines)
-        conflicts += _conflicts(groups)
+        conflicts += _conflicts(groups) + _term_conflicts(quotation_lines)
         reasons += _unmatched(groups, list(dict.fromkeys(line.source for line in quotation_lines)))
     for conflict in conflicts:
         message = _conflict_message(conflict, {line.id: line for line in lines})
@@ -189,6 +196,33 @@ def _conflicts(groups: list[list[LineView]]) -> list[ConflictRecord]:
     return conflicts
 
 
+def _term_conflicts(quotation_lines: list[LineView]) -> list[ConflictRecord]:
+    """The terms the linked Sources of one Quotation state differently. A Source with no
+    lines has nothing to send to review, so its terms aren't compared."""
+    first = quotation_lines[0]
+    conflicts = []
+    for term in COMPARED_TERMS:
+        # A term one Source doesn't state isn't a disagreement, as with line fields.
+        stated = {line.id: _term_value(line, term) for line in quotation_lines}
+        stated = {i: v for i, v in stated.items() if v is not None}
+        if len({_comparable(v) for v in stated.values()}) > 1:
+            conflicts.append(
+                ConflictRecord(
+                    supplier=first.supplier,
+                    quote_ref=first.quote_ref,
+                    field=term,
+                    scope="quotation",
+                    values=stated,
+                )
+            )
+    return conflicts
+
+
+def _term_value(line: LineView, term: str) -> str | None:
+    value = getattr(line, term)
+    return value.isoformat() if isinstance(value, date) else value
+
+
 def _unmatched(groups: list[list[LineView]], sources: list[str]) -> Reasons:
     """A note on each line that some linked Source has no line to compare with: a Product
     key that differs (e.g. a strength one copy couldn't read) would otherwise hide a
@@ -211,11 +245,17 @@ def _unmatched(groups: list[list[LineView]], sources: list[str]) -> Reasons:
 
 
 def _conflict_message(conflict: ConflictRecord, lines: dict[int, LineView]) -> str:
+    # A term's value is given once per line of its Source; name each Source once.
     values = ", ".join(
-        f"{_display(value)} in {Path(lines[line_id].source).name}"
-        for line_id, value in conflict.values.items()
+        dict.fromkeys(
+            f"{_display(value)} in {Path(lines[line_id].source).name}"
+            for line_id, value in conflict.values.items()
+        )
     )
-    return f"Sources of quotation {conflict.quote_ref} disagree on {conflict.field}: {values}"
+    message = f"Sources of quotation {conflict.quote_ref} disagree on {conflict.field}: {values}"
+    if conflict.scope == "quotation":
+        message += ". It applies to every line of each Source"
+    return message
 
 
 def _product_key(line: LineView) -> str:

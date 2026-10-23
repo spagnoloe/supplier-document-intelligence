@@ -2,6 +2,7 @@
 through ingest and the read model."""
 
 import json
+from datetime import date
 
 from conftest import FakeExtractor, InMemoryFxSource
 
@@ -87,12 +88,14 @@ def quotation(
     *lines: QuotationLine,
     supplier: str | None = "Synthetic Pharma Ltd",
     quote_ref: str | None = "SP-77",
+    **terms,
 ) -> Quotation:
     return Quotation(
         document_type="quotation",
         supplier=supplier,
         quote_ref=quote_ref,
         currency="USD",
+        **terms,
         lines=list(lines),
         evidence=[QuotationFieldEvidence(field="currency", span="USD", certainty="stated")],
     )
@@ -335,3 +338,88 @@ def test_line_without_partner_in_a_linked_source_is_noted_without_forcing_review
     assert "UNMATCHED_IN_QUOTATION" in {r.code for r in copy.review_reasons}
     for source in (a, b):
         assert lines[(str(source), "ibuprofen")].review_reasons == []
+
+
+def test_sources_disagreeing_on_the_incoterm_put_every_line_of_each_in_review(
+    write_source, store, read_model
+):
+    a, b, c = (write_source(name, SOURCE) for name in ("a.json", "b.json", "c.json"))
+    quotations = {
+        "a.json": quotation(amoxicillin(), ibuprofen(), incoterm="FCA"),
+        "b.json": quotation(amoxicillin(), ibuprofen(), incoterm="CIF"),
+        # States no Incoterm: not a disagreement, so it stays out of the Conflict.
+        "c.json": quotation(amoxicillin(), ibuprofen()),
+    }
+    ingest([a, b, c], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    [conflict] = read_model.conflicts()
+    assert (conflict.scope, conflict.field, conflict.quote_ref) == (
+        "quotation",
+        "incoterm",
+        "SP-77",
+    )
+    assert [(v.source, v.line_no, v.value) for v in conflict.values] == [
+        (str(a), None, "FCA"),
+        (str(b), None, "CIF"),
+    ]
+    for line in read_model.quotation_lines():
+        if line.source == str(c):
+            assert line.review_status == "auto_ok"
+            continue
+        assert line.review_status == "needs_review"
+        [reason] = line.review_reasons
+        assert (reason.code, reason.field) == ("IN_CONFLICT", "incoterm")
+        assert "FCA in a.json, CIF in b.json" in reason.message
+
+
+def test_sources_agreeing_on_every_stated_term_have_no_conflict(write_source, store, read_model):
+    terms = {
+        "incoterm": "FCA",
+        "incoterm_place": "Port Louis",
+        "issue_date": date(2026, 8, 4),
+        "valid_until": date(2026, 11, 4),
+        "rfq_ref": "RFQ-1",
+    }
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(amoxicillin(), **terms),
+            "b.json": quotation(
+                amoxicillin(), **terms | {"incoterm": "fca", "incoterm_place": "PORT-LOUIS"}
+            ),
+            # A copy that couldn't read a term doesn't disagree with the others.
+            "c.json": quotation(amoxicillin(), **terms | {"valid_until": None, "rfq_ref": None}),
+        },
+    )
+
+    assert read_model.conflicts() == []
+    assert {line.review_status for line in read_model.quotation_lines()} == {"auto_ok"}
+
+
+def test_term_conflicts_are_returned_alongside_line_conflicts(write_source, store, read_model):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5), ibuprofen(), issue_date=date(2026, 8, 4)),
+        "b.json": quotation(amoxicillin(15.2), ibuprofen(), issue_date=date(2026, 8, 14)),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    conflicts = {conflict.field: conflict for conflict in read_model.conflicts()}
+    assert set(conflicts) == {"pack_price", "issue_date"}
+    line_conflict, term_conflict = conflicts["pack_price"], conflicts["issue_date"]
+    assert (line_conflict.scope, line_conflict.inns) == ("line", ["amoxicillin"])
+    assert (term_conflict.scope, term_conflict.inns, term_conflict.dosage_form) == (
+        "quotation",
+        [],
+        None,
+    )
+    assert [(v.source, v.value) for v in term_conflict.values] == [
+        (str(a), "2026-08-04"),
+        (str(b), "2026-08-14"),
+    ]
+    ibuprofen_lines = [line for line in read_model.quotation_lines() if line.inns == ["ibuprofen"]]
+    for line in ibuprofen_lines:
+        assert line.review_status == "needs_review"
+        assert {(r.code, r.field) for r in line.review_reasons} == {("IN_CONFLICT", "issue_date")}

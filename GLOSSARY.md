@@ -9,7 +9,7 @@ One file received from a supplier or customer system (a PDF, JSON export, email,
 _Avoid_: File, input, attachment
 
 **Quotation**:
-A supplier's priced offer to Axmed, identified by supplier + quote reference, with terms that apply to all its lines (currency, Incoterm, validity, RFQ reference). Price lists count as Quotations.
+A supplier's priced offer to Axmed, identified by supplier + quote reference, with terms that apply to all its lines (currency, Incoterm and its place, issue date, validity, RFQ reference). Price lists count as Quotations.
 _Avoid_: Quote, offer, proforma (as distinct concepts)
 
 **Quotation line**:
@@ -75,7 +75,7 @@ _Avoid_: Volume band, bracket
 ## Review
 
 **Conflict**:
-Disagreement between Sources about the same Quotation line (same supplier, quote reference, and Product). One value is wrong, so a reviewer must resolve it.
+Disagreement between Sources about the same Quotation line (same supplier, quote reference, and Product), or about a term of the same Quotation. One value is wrong, so a reviewer must resolve it.
 _Avoid_: Discrepancy, mismatch (when meaning across suppliers)
 
 **Price comparison**:

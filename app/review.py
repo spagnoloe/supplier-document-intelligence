@@ -228,13 +228,20 @@ def conflicts(read_model: ReadModel) -> None:
     if not conflict_views:
         st.info("No Conflicts: no two Sources of one Quotation disagree.")
     for conflict in conflict_views:
+        term = conflict.scope == "quotation"
         with st.container(border=True):
-            st.subheader(f"{conflict.field} · {_product(conflict)}")
+            st.subheader(f"{conflict.field} · {'Quotation term' if term else _product(conflict)}")
             st.caption(f"{conflict.supplier or 'Unknown supplier'} · quote {conflict.quote_ref}")
+            if term:
+                st.caption("Applies to every line of each Source, so all of them are in review.")
             for column, value in zip(
                 st.columns(len(conflict.values)), conflict.values, strict=True
             ):
                 with column:
+                    if value.line_id is None:
+                        st.markdown(f"**{_name(value.source)}**")
+                        st.code(_text(value.value), language=None)
+                        continue
                     st.markdown(f"**{_name(value.source)}**, line {value.line_no}")
                     st.code(_text(value.value), language=None)
                     st.button(
