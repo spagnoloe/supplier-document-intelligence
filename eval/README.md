@@ -7,7 +7,7 @@ uv run sdi eval data samples                 # may call the model for uncached r
 uv run sdi eval data samples --cached-only   # never calls the model; reproducible and free
 ```
 
-Each run ingests into a fresh temporary database, so the numbers always reflect the current code. It writes `eval/results.md` and `eval/results.json`, and prints how many model requests the LLM cache couldn't answer. A run with `0` there made no new calls.
+Each run ingests into a fresh temporary database, so the numbers always reflect the current code. It writes `eval/results.md` and `eval/results.json`, and prints how many model requests the LLM cache couldn't answer. A run with `0` there made no new calls. FX rates are not cached between runs, because the database is fresh: each run asks Frankfurter for the same historical ECB rates. If it can't be reached, lines get an `FX_UNAVAILABLE` flag and the review-load numbers move.
 
 ## Gold set
 

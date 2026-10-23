@@ -326,8 +326,8 @@ Costs to record for the write-up: state-typing boilerplate, overkill for a mostl
 
 ## 11. Evaluation
 
-- **Gold set:** `eval/gold.json`, hand-labelled. Drafted by the agent, verified by the author. Includes expected nulls for glare-hidden scan values.
-- **Script:** `eval/run_eval.py` reports, per Source type:
+- **Gold set:** `eval/gold/<source>.json`, one hand-labelled file per Source. Drafted by the agent, verified by the author. Includes expected nulls for glare-hidden scan values; `any_of` accepts a partly visible value read either way; a field left out isn't scored.
+- **Command:** `sdi eval data samples` ingests into a fresh temporary database every run, so a change to validation can't be hidden by ingest skipping unchanged Sources. `--cached-only` turns a cache miss into an unavailable model instead of a call, so a re-run is free and its numbers identical. Results go to `eval/results.md` and `.json`. It reports, per Source type:
   1. **Line matching:** expected lines found, plus extra lines.
   2. **Field accuracy** on matched lines: numbers within 0.5%, strings normalized.
   3. **Flagging quality:** share of wrong fields that were flagged.
@@ -349,15 +349,17 @@ src/sdi/
   pipeline.py     LangGraph graph per Source + ingest()
   store.py        SQLite writes
   read_model.py   every query the CLI and UI use
+  evaluation.py   eval scoring against the gold set
   fx.py  config.py  cli.py
 app/review.py     Streamlit UI
-eval/gold.json  eval/run_eval.py
+eval/gold/  eval/results.md
 docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 ```
 
 **Run:**
 - `uv run sdi ingest data/`
 - `uv run sdi export lines.csv`
+- `uv run sdi eval data samples --cached-only`
 - `uv run streamlit run app/review.py`
 
 **Secrets:** `.env` holds `GOOGLE_API_KEY`, with a committed `.env.example`.
