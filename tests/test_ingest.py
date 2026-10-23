@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from datetime import date
+from io import BytesIO
 
 import pytest
 from conftest import (
@@ -13,6 +14,7 @@ from conftest import (
     make_workbook,
 )
 from langchain_core.exceptions import OutputParserException
+from PIL import Image
 
 from sdi.pipeline import ingest
 from sdi.store import Store
@@ -181,14 +183,25 @@ def test_html_only_email_reaches_extractor_as_text_without_markup(write_source, 
     assert "color: red" not in received.text
 
 
-def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, store):
-    source = write_source("scan.pdf", make_text_pdf())
+@pytest.mark.parametrize(
+    "lines",
+    [
+        pytest.param((), id="no text layer"),
+        pytest.param(("Page 1 of 1",), id="only a stray page number"),
+    ],
+)
+def test_pdf_with_almost_no_text_reaches_extractor_as_page_images(write_source, store, lines):
+    source = write_source("scan.pdf", make_text_pdf(*lines))
     extractor = FakeExtractor({"scan.pdf": make_quotation("Alpha")})
 
     ingest([source], extractor, InMemoryFxSource(), store)
 
     [received] = extractor.received
     assert received.text is None
+    [page] = received.images
+    assert page.startswith(b"\x89PNG")
+    # Rendered at a resolution the model can read print at, not the 72 dpi of the page box.
+    assert Image.open(BytesIO(page)).width >= 2 * 612
 
 
 def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, read_model):
