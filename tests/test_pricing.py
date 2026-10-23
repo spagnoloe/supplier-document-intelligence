@@ -1,6 +1,7 @@
 """Calculated prices, arithmetic cross-checks and USD conversion (ADR-0002), observed through
 ingest and the read model."""
 
+from conftest import make_text_pdf
 from test_review import (
     LINE_EVIDENCE,
     SOURCE,
@@ -10,6 +11,7 @@ from test_review import (
     make_line,
     make_quotation,
     reasons_of,
+    results_of,
 )
 
 from sdi.extraction.schema import PriceTier
@@ -65,3 +67,42 @@ def test_tiered_line_takes_the_lowest_volume_tier_as_headline(write_source, stor
     [line] = read_model.quotation_lines()
     assert (line.headline_unit_price, line.headline_pack_price) == (0.1275, 12.75)
     assert (line.review_status, reasons_of(line)) == ("auto_ok", {("TIERED_PRICING", None)})
+
+
+def ingest_scan(write_source, store, line, **kwargs):
+    """A Source without text: no evidence check runs, so only arithmetic can verify a field."""
+    ingest_one(
+        write_source, store, make_quotation(line), make_text_pdf(), name="scan.pdf", **kwargs
+    )
+
+
+def test_consistent_unit_and_pack_prices_verify_each_other(write_source, store, read_model):
+    # 0.42 is 12.50 / 30 rounded to the cent: within tolerance.
+    ingest_scan(write_source, store, make_line(pack_size=30, unit_price=0.42, pack_price=12.5))
+
+    [line] = read_model.quotation_lines()
+    results = results_of(read_model, line)
+    assert {f: results[f] for f in ("unit_price", "pack_price", "pack_size")} == {
+        "unit_price": "verified",
+        "pack_price": "verified",
+        "pack_size": "verified",
+    }
+    assert results["uom"] == "unverified"
+
+
+def test_inconsistent_unit_and_pack_prices_fail_with_arithmetic_mismatch(
+    write_source, store, read_model
+):
+    ingest_scan(write_source, store, make_line(pack_size=30, unit_price=0.5, pack_price=12.5))
+
+    [line] = read_model.quotation_lines()
+    assert (line.review_status, reasons_of(line)) == (
+        "needs_review",
+        {
+            ("ARITHMETIC_MISMATCH", "unit_price"),
+            ("ARITHMETIC_MISMATCH", "pack_price"),
+            ("ARITHMETIC_MISMATCH", "pack_size"),
+        },
+    )
+    [reason, *_] = line.review_reasons
+    assert reason.message == "Unit price 0.5 × Pack size 30 = 15, but Pack price is 12.5"

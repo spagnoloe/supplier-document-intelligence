@@ -31,6 +31,7 @@ class ReasonCode(StrEnum):
     IMPLAUSIBLE_VALUE = "IMPLAUSIBLE_VALUE"
     INFERRED_VALUE = "INFERRED_VALUE"
     UNCLEAR_VALUE = "UNCLEAR_VALUE"
+    ARITHMETIC_MISMATCH = "ARITHMETIC_MISMATCH"
     REVISION = "REVISION"
     TIERED_PRICING = "TIERED_PRICING"
 
@@ -60,6 +61,11 @@ _NON_MONEY_CODES = frozenset(
 
 # Relative tolerance for a float value against the number written in its evidence.
 _NUMBER_TOLERANCE = 1e-9
+
+# Relative tolerance for an arithmetic cross-check. Documents round derived figures (a Unit
+# price of 12.50 / 30 is written 0.42, 0.8% off), so 1% absorbs rounding to the cent but
+# still catches a price for the wrong quantity.
+_ARITHMETIC_TOLERANCE = 0.01
 
 
 def verify(quotation: Quotation, content: DocumentContent) -> list[LineVerification]:
@@ -119,6 +125,7 @@ def _verify_line(
             _check_evidence(checks, field, value, evidence, text)
         _check_certainty(checks, field, evidence)
     _check_rules(checks, line, quotation)
+    _check_arithmetic(checks, line)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
     if (tier := headline_tier(line)) is not None:
@@ -247,6 +254,31 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
             checks.failed(
                 field, ReasonCode.IMPLAUSIBLE_VALUE, f"{field} {amount:g} is not positive"
             )
+
+
+def _check_arithmetic(checks: _LineChecks, line: QuotationLine) -> None:
+    """Stated values that must agree with each other verify together, or fail together."""
+    unit, pack, pack_size = line.unit_price, line.pack_price, line.pack_size
+    if unit is not None and pack is not None and pack_size is not None:
+        _cross_check(
+            checks,
+            ("unit_price", "pack_price", "pack_size"),
+            unit * pack_size,
+            pack,
+            f"Unit price {unit:g} × Pack size {pack_size:g} = {unit * pack_size:g}, "
+            f"but Pack price is {pack:g}",
+        )
+
+
+def _cross_check(
+    checks: _LineChecks, fields: tuple[str, ...], calculated: float, stated: float, message: str
+) -> None:
+    if abs(calculated - stated) <= _ARITHMETIC_TOLERANCE * abs(stated):
+        for field in fields:
+            checks.verified(field)
+    else:
+        for field in fields:
+            checks.failed(field, ReasonCode.ARITHMETIC_MISMATCH, message)
 
 
 def _is_iso_currency(code: str) -> bool:
