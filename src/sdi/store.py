@@ -8,8 +8,11 @@ import json
 import sqlite3
 from contextlib import closing, contextmanager
 from pathlib import Path
+from typing import Literal
 
 from sdi.extraction.schema import Quotation
+
+ProcessingStatus = Literal["processed", "failed", "skipped_unsupported_type"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -77,52 +80,15 @@ class Store:
             doc_id = self._replace_document(
                 conn, source_path, file_type, "processed", quotation.document_type
             )
-            q = quotation.model_dump(mode="json")
-            quotation_id = conn.execute(
-                """INSERT INTO quotations (document_id, supplier, quote_ref, rfq_ref, issue_date,
-                   valid_until, currency, incoterm, incoterm_place, evidence)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    doc_id,
-                    q["supplier"],
-                    q["quote_ref"],
-                    q["rfq_ref"],
-                    q["issue_date"],
-                    q["valid_until"],
-                    q["currency"],
-                    q["incoterm"],
-                    q["incoterm_place"],
-                    json.dumps(q["evidence"]),
-                ),
-            ).lastrowid
-            conn.executemany(
-                """INSERT INTO quotation_lines (quotation_id, line_no, brand_name,
-                   active_ingredients, dosage_form, uom, pack_size, unit_price, pack_price,
-                   currency, discount_pct, quantity, line_total, price_tiers, revision_note,
-                   evidence)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                [
-                    (
-                        quotation_id,
-                        line_no,
-                        ln["brand_name"],
-                        json.dumps(ln["active_ingredients"]),
-                        ln["dosage_form"],
-                        ln["uom"],
-                        ln["pack_size"],
-                        ln["unit_price"],
-                        ln["pack_price"],
-                        ln["currency"],
-                        ln["discount_pct"],
-                        ln["quantity"],
-                        ln["line_total"],
-                        json.dumps(ln["price_tiers"]),
-                        ln["revision_note"],
-                        json.dumps(ln["evidence"]),
-                    )
-                    for line_no, ln in enumerate(q["lines"], start=1)
-                ],
-            )
+            terms = quotation.model_dump(mode="json", exclude={"document_type", "lines"})
+            quotation_id = _insert(conn, "quotations", {"document_id": doc_id, **terms})
+            for line_no, line in enumerate(quotation.lines, start=1):
+                values = line.model_dump(mode="json")
+                _insert(
+                    conn,
+                    "quotation_lines",
+                    {"quotation_id": quotation_id, "line_no": line_no, **values},
+                )
 
     def save_skipped(self, source_path: str, file_type: str | None, document_type: str) -> None:
         with connect(self.db_path) as conn:
@@ -139,15 +105,29 @@ class Store:
         conn: sqlite3.Connection,
         source_path: str,
         file_type: str | None,
-        status: str,
+        status: ProcessingStatus,
         document_type: str | None,
         error: str | None = None,
     ) -> int:
         conn.execute("DELETE FROM documents WHERE source_path = ?", (source_path,))
-        doc_id = conn.execute(
-            """INSERT INTO documents (source_path, file_type, status, document_type, error)
-               VALUES (?, ?, ?, ?, ?)""",
-            (source_path, file_type, status, document_type, error),
-        ).lastrowid
-        assert doc_id is not None
-        return doc_id
+        return _insert(
+            conn,
+            "documents",
+            {
+                "source_path": source_path,
+                "file_type": file_type,
+                "status": status,
+                "document_type": document_type,
+                "error": error,
+            },
+        )
+
+
+def _insert(conn: sqlite3.Connection, table: str, values: dict) -> int:
+    """Insert one row whose keys are column names; lists and dicts are stored as JSON."""
+    row = {k: json.dumps(v) if isinstance(v, list | dict) else v for k, v in values.items()}
+    columns = ", ".join(row)
+    params = ", ".join(f":{k}" for k in row)
+    row_id = conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({params})", row).lastrowid
+    assert row_id is not None
+    return row_id

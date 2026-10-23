@@ -75,10 +75,10 @@ def ingest(
     # A failure anywhere in one Source's graph is recorded against that Source only.
     for path, result in zip(sources, results, strict=True):
         if isinstance(result, Exception):
-            store.save_failed(str(path), file_type(path), _describe(result))
+            store.save_failed(str(path), file_type(path), _error_message(result))
 
 
-def _describe(error: Exception) -> str:
+def _error_message(error: Exception) -> str:
     if isinstance(error, NoLoaderError):
         return str(error)
     return f"{type(error).__name__}: {error}"

@@ -6,13 +6,13 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from sdi.store import connect
+from sdi.store import ProcessingStatus, connect
 
 
 class DocumentStatus(BaseModel):
     source: str
     file_type: str | None
-    status: str
+    status: ProcessingStatus
     document_type: str | None
     error: str | None
     line_count: int
