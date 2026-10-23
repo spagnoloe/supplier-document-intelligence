@@ -13,6 +13,9 @@ class DerivedPrices(BaseModel):
     # The line's Unit and Pack price: as stated, or calculated from the other and Pack size.
     headline_unit_price: float | None = None
     headline_pack_price: float | None = None
+    # The headline prices after the stated discount; empty when no discount is stated.
+    net_unit_price: float | None = None
+    net_pack_price: float | None = None
 
 
 def derive_prices(line: QuotationLine) -> DerivedPrices:
@@ -26,4 +29,9 @@ def derive_prices(line: QuotationLine) -> DerivedPrices:
             unit = pack / pack_size
         elif pack is None and unit is not None:
             pack = unit * pack_size
-    return DerivedPrices(headline_unit_price=unit, headline_pack_price=pack)
+    prices = DerivedPrices(headline_unit_price=unit, headline_pack_price=pack)
+    if line.discount_pct is not None:
+        keep = 1 - line.discount_pct / 100
+        prices.net_unit_price = None if unit is None else unit * keep
+        prices.net_pack_price = None if pack is None else pack * keep
+    return prices

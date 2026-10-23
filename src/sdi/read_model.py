@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sdi.extraction.schema import FieldEvidence
 from sdi.store import ProcessingStatus, connect
 from sdi.validation import FieldResult, ReviewReason, ReviewStatus
+from sdi.validation.pricing import DerivedPrices
 
 
 class DocumentStatus(BaseModel):
@@ -21,7 +22,10 @@ class DocumentStatus(BaseModel):
     needs_review_count: int
 
 
-class LineView(BaseModel):
+class LineView(DerivedPrices):
+    """A stored line: the stated values, its review outcome, and the prices calculated from
+    them."""
+
     id: int
     source: str
     supplier: str | None
@@ -44,8 +48,6 @@ class LineView(BaseModel):
     evidence: list[FieldEvidence]
     review_status: ReviewStatus
     review_reasons: list[ReviewReason]
-    headline_unit_price: float | None
-    headline_pack_price: float | None
 
 
 class FieldDetail(BaseModel):
@@ -68,7 +70,7 @@ _LINES_QUERY = """
            COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
            l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence,
            l.review_status, l.field_verification, q.evidence AS quotation_evidence,
-           l.headline_unit_price, l.headline_pack_price,
+           {derived_columns},
            (SELECT json_group_array(json_object('code', r.code, 'field', r.field,
                                                 'message', r.message))
             FROM (SELECT * FROM review_reasons WHERE line_id = l.id ORDER BY id) r
@@ -76,7 +78,7 @@ _LINES_QUERY = """
     FROM quotation_lines l
     JOIN quotations q ON q.id = l.quotation_id
     JOIN documents d ON d.id = q.document_id
-"""
+""".format(derived_columns=", ".join(f"l.{field}" for field in DerivedPrices.model_fields))
 
 
 class ReadModel:

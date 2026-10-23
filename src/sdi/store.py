@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS quotation_lines (
     review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'auto_ok')),
     field_verification TEXT NOT NULL,
     headline_unit_price REAL,
-    headline_pack_price REAL
+    headline_pack_price REAL,
+    net_unit_price REAL,
+    net_pack_price REAL
 );
 -- No CHECK on code: new Review reason codes need no schema change.
 CREATE TABLE IF NOT EXISTS review_reasons (

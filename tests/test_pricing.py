@@ -22,3 +22,19 @@ def test_pack_price_is_calculated_from_a_stated_unit_price(write_source, store, 
     [line] = read_model.quotation_lines()
     assert (line.headline_unit_price, line.headline_pack_price) == (12.5, 1250.0)
     assert line.review_reasons == []
+
+
+def test_stated_discount_gives_net_prices(write_source, store, read_model):
+    text = SOURCE.replace('"Box of 100"', '"Box of 100", "discount": "10%"')
+    spans = {**LINE_EVIDENCE, "discount_pct": "10%"}
+    ingest_one(write_source, store, make_quotation(make_line(spans, discount_pct=10.0)), text)
+
+    [line] = read_model.quotation_lines()
+    assert (line.net_unit_price, line.net_pack_price) == (11.25, 1125.0)
+
+
+def test_no_discount_leaves_net_prices_empty(write_source, store, read_model):
+    ingest_one(write_source, store, make_quotation(make_line()))
+
+    [line] = read_model.quotation_lines()
+    assert (line.net_unit_price, line.net_pack_price) == (None, None)
