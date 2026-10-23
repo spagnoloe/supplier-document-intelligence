@@ -8,6 +8,7 @@ import pytest
 from openpyxl import Workbook
 
 from sdi.extraction.schema import ActiveIngredient, Quotation, QuotationLine
+from sdi.fx import FxRate
 from sdi.loaders import DocumentContent
 from sdi.read_model import ReadModel
 from sdi.store import Store
@@ -39,10 +40,12 @@ class FakeExtractor:
 
 
 class InMemoryFxSource:
-    def __init__(self, rates: dict[tuple[str, date], float] | None = None):
+    def __init__(self, rates: dict[tuple[str, date], FxRate] | None = None):
         self._rates = rates or {}
+        self.requests: list[tuple[str, date]] = []
 
-    def __call__(self, currency: str, on: date) -> float | None:
+    def __call__(self, currency: str, on: date) -> FxRate | None:
+        self.requests.append((currency, on))
         return self._rates.get((currency, on))
 
 

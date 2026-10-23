@@ -7,12 +7,14 @@ folder never duplicates rows.
 import json
 import sqlite3
 from contextlib import closing, contextmanager
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
 from sdi.extraction.schema import Quotation
+from sdi.fx import FxRate
 from sdi.validation import LineVerification, ReviewReason
 
 ProcessingStatus = Literal["processed", "failed", "skipped_unsupported_type"]
@@ -62,7 +64,23 @@ CREATE TABLE IF NOT EXISTS quotation_lines (
     verification_status TEXT NOT NULL
         CHECK (verification_status IN ('needs_review', 'auto_ok')),
     review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'auto_ok')),
-    field_verification TEXT NOT NULL
+    field_verification TEXT NOT NULL,
+    headline_unit_price REAL,
+    headline_pack_price REAL,
+    net_unit_price REAL,
+    net_pack_price REAL,
+    usd_per_uom REAL,
+    fx_rate REAL,
+    fx_rate_date TEXT,
+    fx_source TEXT
+);
+CREATE TABLE IF NOT EXISTS fx_rates (
+    currency TEXT NOT NULL,
+    requested_date TEXT NOT NULL,
+    rate REAL NOT NULL,
+    rate_date TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (currency, requested_date)
 );
 -- No CHECK on code: new Review reason codes need no schema change.
 CREATE TABLE IF NOT EXISTS review_reasons (
@@ -97,6 +115,15 @@ class ConflictRecord(BaseModel):
     values: dict[int, object]  # line id → that line's value
 
 
+# SQL value for a column added since a database was created, for the rows it already holds.
+# Before reconciliation existed, a line's own verification outcome was its review status, and
+# every reason came from verification.
+_BACKFILLS = {
+    ("quotation_lines", "verification_status"): "review_status",
+    ("review_reasons", "origin"): "'verification'",
+}
+
+
 @contextmanager
 def connect(db_path: Path):
     with closing(sqlite3.connect(db_path, timeout=30)) as conn:
@@ -112,6 +139,7 @@ class Store:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with connect(self.db_path) as conn:
             conn.executescript(SCHEMA)
+            _add_missing_columns(conn)
 
     def save_processed(
         self,
@@ -139,6 +167,7 @@ class Store:
                         "verification_status": verification.review_status,
                         "review_status": verification.review_status,
                         "field_verification": verification.fields,
+                        **verification.prices.model_dump(mode="json"),
                     },
                 )
                 for reason in verification.reasons:
@@ -173,6 +202,22 @@ class Store:
                    WHERE id IN (SELECT line_id FROM conflict_values)"""
             )
 
+    def fx_rate(self, currency: str, on: date) -> FxRate | None:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT rate, rate_date, source FROM fx_rates"
+                " WHERE currency = ? AND requested_date = ?",
+                (currency, on.isoformat()),
+            ).fetchone()
+        return None if row is None else FxRate(**dict(row))
+
+    def save_fx_rate(self, currency: str, on: date, rate: FxRate) -> None:
+        with connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO fx_rates VALUES (?, ?, ?, ?, ?)",
+                (currency, on.isoformat(), rate.rate, rate.rate_date.isoformat(), rate.source),
+            )
+
     def save_skipped(self, source_path: str, file_type: str | None, document_type: str) -> None:
         with connect(self.db_path) as conn:
             self._replace_document(
@@ -204,6 +249,22 @@ class Store:
                 "error": error,
             },
         )
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """A database from an earlier schema gains the columns added since, so an existing
+    sdi.db keeps working; nothing is dropped or changed. Existing rows get the column's
+    backfill value, so a column the code relies on is never left empty."""
+    with closing(sqlite3.connect(":memory:")) as reference:
+        reference.executescript(SCHEMA)
+        tables = reference.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        for (table,) in tables.fetchall():
+            existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for _, column, column_type, *_ in reference.execute(f"PRAGMA table_info({table})"):
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+                    if (backfill := _BACKFILLS.get((table, column))) is not None:
+                        conn.execute(f"UPDATE {table} SET {column} = {backfill}")
 
 
 def _insert_reason(

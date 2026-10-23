@@ -5,6 +5,7 @@ by independent checks; the model's own confidence is never used. A line needs re
 a critical field fails or when it carries a revision. Every flag is a Review reason.
 """
 
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import Literal, get_args
 
@@ -12,8 +13,17 @@ import pycountry
 from pydantic import BaseModel
 
 from sdi.extraction.schema import FieldEvidence, LineField, Quotation, QuotationLine
+from sdi.fx import FxSource
 from sdi.loaders import DocumentContent
 from sdi.validation.evidence import SourceText, numbers_in
+from sdi.validation.pricing import (
+    DerivedPrices,
+    convert_to_usd,
+    derive_prices,
+    headline_tier,
+    usable_discount,
+    usable_pack_size,
+)
 
 FieldResult = Literal["verified", "unverified", "failed"]
 ReviewStatus = Literal["needs_review", "auto_ok"]
@@ -30,7 +40,10 @@ class ReasonCode(StrEnum):
     IMPLAUSIBLE_VALUE = "IMPLAUSIBLE_VALUE"
     INFERRED_VALUE = "INFERRED_VALUE"
     UNCLEAR_VALUE = "UNCLEAR_VALUE"
+    ARITHMETIC_MISMATCH = "ARITHMETIC_MISMATCH"
     REVISION = "REVISION"
+    TIERED_PRICING = "TIERED_PRICING"
+    FX_UNAVAILABLE = "FX_UNAVAILABLE"
     # Raised by reconciliation across Sources, not by verification of one Source.
     IN_CONFLICT = "IN_CONFLICT"
     NO_QUOTE_REFERENCE = "NO_QUOTE_REFERENCE"
@@ -48,6 +61,7 @@ class LineVerification(BaseModel):
     fields: dict[str, FieldResult]
     reasons: list[ReviewReason]
     review_status: ReviewStatus
+    prices: DerivedPrices
 
 
 # A line needs at least one of these prices, and each one stated is critical.
@@ -63,11 +77,16 @@ _NON_MONEY_CODES = frozenset(
 # Relative tolerance for a float value against the number written in its evidence.
 _NUMBER_TOLERANCE = 1e-9
 
+# Relative tolerance for an arithmetic cross-check. Documents round derived figures (a Unit
+# price of 12.50 / 30 is written 0.42, 0.8% off), so 1% absorbs rounding to the cent but
+# still catches a price for the wrong quantity.
+_ARITHMETIC_TOLERANCE = 0.01
 
-def verify(quotation: Quotation, content: DocumentContent) -> list[LineVerification]:
+
+def verify(quotation: Quotation, content: DocumentContent, fx: FxSource) -> list[LineVerification]:
     # Without source text (images) the evidence check can't run, so fields stay unverified.
     text = SourceText(content.text) if content.text else None
-    return [_verify_line(line, quotation, text) for line in quotation.lines]
+    return [_verify_line(line, quotation, text, fx) for line in quotation.lines]
 
 
 class _LineChecks:
@@ -89,6 +108,14 @@ class _LineChecks:
         self.fields[field] = "failed"
         self.note(code, field, message)
 
+    def verified_all(self, fields: Iterable[str]) -> None:
+        for field in fields:
+            self.verified(field)
+
+    def failed_all(self, fields: Iterable[str], code: ReasonCode, message: str) -> None:
+        for field in fields:
+            self.failed(field, code, message)
+
     def note(self, code: ReasonCode, field: str | None, message: str) -> None:
         self.reasons.append(ReviewReason(code=code, field=field, message=message))
 
@@ -96,18 +123,20 @@ class _LineChecks:
         self._forced_review = True
         self.note(code, field, message)
 
-    def result(self) -> LineVerification:
+    def result(self, prices: DerivedPrices) -> LineVerification:
         critical_failed = any(
             result == "failed" for field, result in self.fields.items() if field in CRITICAL_FIELDS
         )
         status: ReviewStatus = (
             "needs_review" if critical_failed or self._forced_review else "auto_ok"
         )
-        return LineVerification(fields=self.fields, reasons=self.reasons, review_status=status)
+        return LineVerification(
+            fields=self.fields, reasons=self.reasons, review_status=status, prices=prices
+        )
 
 
 def _verify_line(
-    line: QuotationLine, quotation: Quotation, text: SourceText | None
+    line: QuotationLine, quotation: Quotation, text: SourceText | None, fx: FxSource
 ) -> LineVerification:
     checks = _LineChecks()
     for field in get_args(LineField):
@@ -119,9 +148,26 @@ def _verify_line(
             _check_evidence(checks, field, value, evidence, text)
         _check_certainty(checks, field, evidence)
     _check_rules(checks, line, quotation)
+    prices = derive_prices(line)
+    _check_arithmetic(checks, line, prices)
+    currency = line.currency or quotation.currency
+    # An absent or invalid currency is already a failed field; there is nothing to convert.
+    if currency is not None and _is_iso_currency(currency):
+        if unavailable := convert_to_usd(prices, currency, quotation.issue_date, fx):
+            checks.note(ReasonCode.FX_UNAVAILABLE, None, unavailable)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
-    return checks.result()
+    if line.price_tiers:
+        tier = headline_tier(line)
+        basis = (
+            "the line's stated price" if tier is None else f"the tier from {tier.min_qty or 0:g}"
+        )
+        checks.note(
+            ReasonCode.TIERED_PRICING,
+            None,
+            f"Price depends on order volume; headline price is {basis}",
+        )
+    return checks.result(prices)
 
 
 def _field_value(
@@ -241,6 +287,90 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
             checks.failed(
                 field, ReasonCode.IMPLAUSIBLE_VALUE, f"{field} {amount:g} is not positive"
             )
+
+
+def _check_arithmetic(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
+    """Stated values that must agree with each other verify together, or fail together:
+    arithmetic shows that one of them is wrong, not which."""
+    pack_size = usable_pack_size(line)
+    if pack_size is not None:
+        _check_pack_price(
+            checks, ("unit_price", "pack_price"), line.unit_price, line.pack_price, pack_size
+        )
+        for tier in line.price_tiers:
+            _check_pack_price(
+                checks,
+                ("price_tiers",),
+                tier.unit_price,
+                tier.pack_price,
+                pack_size,
+                f"Tier from {tier.min_qty or 0:g}: ",
+            )
+    _check_line_total(checks, line, prices)
+
+
+def _check_pack_price(
+    checks: _LineChecks,
+    price_fields: tuple[str, ...],
+    unit: float | None,
+    pack: float | None,
+    pack_size: float,
+    where: str = "",
+) -> None:
+    """Unit price × Pack size ≈ Pack price, when both prices are stated."""
+    if unit is None or pack is None:
+        return
+    fields = (*price_fields, "pack_size")
+    if _agrees(unit * pack_size, pack):
+        checks.verified_all(fields)
+    else:
+        checks.failed_all(
+            fields,
+            ReasonCode.ARITHMETIC_MISMATCH,
+            f"{where}Unit price {unit:g} × Pack size {pack_size:g} = {unit * pack_size:g}, "
+            f"but Pack price is {pack:g}",
+        )
+
+
+def _check_line_total(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
+    quantity, total, discount = line.quantity, line.line_total, usable_discount(line)
+    if quantity is None or total is None:
+        return
+    # A tier-only line has no single price to multiply: the tier depends on the quantity.
+    if line.unit_price is None and line.pack_price is None:
+        return
+    if discount is None and line.discount_pct is not None:
+        return  # a discount the rules reject can't be applied
+    # Quantity may count UOMs or Packs, so either price may produce the total. Each candidate
+    # carries the stated fields it rests on; stated prices come first.
+    candidates: list[tuple[str, float, tuple[str, ...]]] = []
+    if line.unit_price is not None:
+        candidates.append(("Unit price", line.unit_price, ("unit_price",)))
+    if line.pack_price is not None:
+        candidates.append(("Pack price", line.pack_price, ("pack_price",)))
+    if line.unit_price is None and prices.headline_unit_price is not None:
+        candidates.append(("Unit price", prices.headline_unit_price, ("pack_price", "pack_size")))
+    if line.pack_price is None and prices.headline_pack_price is not None:
+        candidates.append(("Pack price", prices.headline_pack_price, ("unit_price", "pack_size")))
+    keep = 1 - (discount or 0) / 100
+    involved = ("quantity", "line_total") + (("discount_pct",) if discount is not None else ())
+    for _, price, fields in candidates:
+        if _agrees(quantity * price * keep, total):
+            checks.verified_all((*involved, *fields))
+            return
+    label, price, _ = candidates[0]
+    less = f" less {discount:g}%" if discount else ""
+    tried = {field: None for _, _, fields in candidates for field in fields}  # ordered set
+    checks.failed_all(
+        (*involved, *tried),
+        ReasonCode.ARITHMETIC_MISMATCH,
+        f"Quantity {quantity:g} × {label} {price:g}{less} = {quantity * price * keep:g}, "
+        f"but line total is {total:g}",
+    )
+
+
+def _agrees(calculated: float, stated: float) -> bool:
+    return abs(calculated - stated) <= _ARITHMETIC_TOLERANCE * abs(stated)
 
 
 def _is_iso_currency(code: str) -> bool:

@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from datetime import date
 
 from conftest import (
@@ -12,6 +13,7 @@ from conftest import (
 from langchain_core.exceptions import OutputParserException
 
 from sdi.pipeline import ingest
+from sdi.store import Store
 
 
 def test_json_source_lines_are_readable_through_read_model(write_source, store, read_model):
@@ -185,6 +187,30 @@ def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, sto
 
     [received] = extractor.received
     assert received.text is None
+
+
+def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, read_model):
+    old, new = write_source("old.json", "{}"), write_source("new.json", "{}")
+    extractor = FakeExtractor(
+        {"old.json": make_quotation("Alpha"), "new.json": make_quotation("Beta")}
+    )
+    ingest([old], extractor, InMemoryFxSource(), Store(db_path))
+    [before] = read_model.quotation_lines()
+    # Columns added after that database was created, dropped again to recreate it.
+    with sqlite3.connect(db_path) as conn:
+        for table, column in [
+            ("quotation_lines", "verification_status"),
+            ("quotation_lines", "headline_unit_price"),
+            ("review_reasons", "origin"),
+        ]:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+
+    ingest([new], extractor, InMemoryFxSource(), Store(db_path))
+
+    assert {s.status for s in read_model.document_statuses()} == {"processed"}
+    lines = {line.inns[0]: line for line in read_model.quotation_lines()}
+    assert lines["alpha"].review_status == before.review_status
+    assert lines["beta"].headline_unit_price == 0.1
 
 
 def test_multi_sheet_workbook_reaches_extractor_as_text_one_row_per_line(

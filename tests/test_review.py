@@ -79,9 +79,17 @@ def make_quotation(
     )
 
 
-def ingest_one(write_source, store, quotation: Quotation, text: str = SOURCE):
-    source = write_source("offer.json", text)
-    ingest([source], FakeExtractor({"offer.json": quotation}), InMemoryFxSource(), store)
+def ingest_one(
+    write_source,
+    store,
+    quotation: Quotation,
+    text: str | bytes = SOURCE,
+    *,
+    fx: InMemoryFxSource | None = None,
+    name: str = "offer.json",
+):
+    source = write_source(name, text)
+    ingest([source], FakeExtractor({name: quotation}), fx or InMemoryFxSource(), store)
     return source
 
 
@@ -200,8 +208,9 @@ def test_line_currency_overrides_and_is_checked_against_line_evidence(
     ingest_one(write_source, store, make_quotation(make_line(spans, currency="EUR")))
 
     [line] = read_model.review_queue()
+    # The Quotation has no issue date, so there is no date to take an EUR rate on.
     assert line.currency == "EUR"
-    assert reasons_of(line) == {("EVIDENCE_NOT_FOUND", "currency")}
+    assert reasons_of(line) == {("EVIDENCE_NOT_FOUND", "currency"), ("FX_UNAVAILABLE", None)}
 
 
 def test_zero_price_fails_as_non_positive(write_source, store, read_model):
@@ -278,7 +287,7 @@ def test_tier_prices_alone_satisfy_the_price_requirement(write_source, store, re
     )
 
     [line] = read_model.review_queue()
-    assert (line.review_status, line.review_reasons) == ("auto_ok", [])
+    assert (line.review_status, reasons_of(line)) == ("auto_ok", {("TIERED_PRICING", None)})
     assert results_of(read_model, line)["price_tiers"] == "verified"
 
 
@@ -421,7 +430,7 @@ def test_list_entries_verify_against_numbers_anywhere_in_the_source(
     ingest_one(write_source, store, make_quotation(tiered_line()), TIERED_SOURCE)
 
     [line] = read_model.review_queue()
-    assert (line.review_status, line.review_reasons) == ("auto_ok", [])
+    assert (line.review_status, reasons_of(line)) == ("auto_ok", {("TIERED_PRICING", None)})
     results = results_of(read_model, line)
     assert (results["active_ingredients"], results["price_tiers"]) == ("verified", "verified")
 
@@ -434,9 +443,9 @@ def test_list_entry_number_absent_from_the_source_fails_evidence(write_source, s
     [line] = read_model.review_queue()
     assert (line.review_status, reasons_of(line)) == (
         "needs_review",
-        {("EVIDENCE_NOT_FOUND", "price_tiers")},
+        {("EVIDENCE_NOT_FOUND", "price_tiers"), ("TIERED_PRICING", None)},
     )
-    [reason] = line.review_reasons
+    [reason] = [r for r in line.review_reasons if r.code == "EVIDENCE_NOT_FOUND"]
     assert reason.message == "5000 not found in source text"
 
 
