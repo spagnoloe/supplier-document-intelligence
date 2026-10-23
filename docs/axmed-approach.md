@@ -73,7 +73,9 @@ class DocumentContent(BaseModel):
 | JSON / Excel | serialized content | `[]` |
 | Email (.eml) | From/Date/Subject headers + text/plain body (HTML→text fallback) | `[]` |
 
-The scanned-PDF fallback is generic (low text yield). The pack has no scanned PDFs, so it's included but not exercised by the sample.
+The scanned-PDF fallback is generic: below 25 non-blank characters per page on average, the PDF counts as a scan and its pages are rendered at 200 dpi. A page number or scanner stamp doesn't count as a text layer, since sending it as text would fail every evidence check. The pack has no scanned PDFs, so the fallback is covered by a synthetic test, not by the sample.
+
+**Known limitation:** the text yield is averaged over the whole PDF, so one with a text page and a scanned page counts as text and the scanned page is never seen. Handling it per page would need one Source to carry both text and images, and image-ness to be decided per page rather than per Source, which reaches into the review rules. Nothing in the pack exercises it, so it's recorded, not built.
 
 ---
 
@@ -188,7 +190,7 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 
 | Result | When |
 |---|---|
-| verified | evidence span found verbatim in source text, or an arithmetic cross-check passes, or two image reads agree |
+| verified | evidence span found verbatim in source text, or an arithmetic cross-check passes, or two reads agree |
 | unverified | no check possible, nothing contradicts the value |
 | failed | contradicted by a check, null or unreadable, or rule broken (invalid ISO currency, price ≤ 0) |
 
@@ -198,10 +200,14 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
   - unit × pack_size ≈ pack_price, when all three are stated, on the line and on each Price tier.
   - qty × price × (1 − discount) ≈ line_total. Documents count the quantity in UOMs or in Packs without saying which, so either price, stated or calculated, may produce the total; a mismatch also fails the Pack size when a price calculated from it was tried. Tier-only lines are skipped: the tier that applies depends on the quantity.
 - **Rule checks.** ISO 4217 currency (`INVALID_CURRENCY`), price > 0 (`NON_POSITIVE_PRICE`), critical field present (`MISSING_CRITICAL_FIELD`), and plausible magnitude (`IMPLAUSIBLE_VALUE`: pack size a positive whole number, discount within 0–100%, positive quantity, line total and strength).
-- **Second-read agreement** (images and failed lines).
+- **Second-read agreement.** A conditional edge sends image Sources, and Sources with a line whose critical checks failed, to a second extractor with a stronger model. On an image every line is compared; on a text Source only the failed lines are, since the rest are already verified against the text. A field both reads give alike is verified; one they give differently fails with `SECOND_READ_DISAGREEMENT`. Strings are compared ignoring case and punctuation, ingredients by INN and strength. Three rules came from the sample run:
+  - A value one read leaves empty confirms nothing and contradicts nothing, as with nulls across Sources. A glare-hidden price stays missing; it doesn't take the other read's guess.
+  - Lines pair by position. Reads with different line counts (one read split a row), or that list other active ingredients in the same position (a reordered read), compare no line and say so: position pairing would then compare the wrong products. Pairing by the full Product key, as reconciliation does, was rejected: it includes the strength, so a misread strength would leave the lines unpaired, and that's a misread the second read exists to catch.
+  - The dosage form isn't compared. It's a standardized term the model chooses ("Syrup" or "Oral syrup"), not a value read off the page.
+  - A second read that fails (a quota error, or malformed output on every retry) leaves the first read standing, with the note `SECOND_READ_UNAVAILABLE`. It only adds confidence, so losing it mustn't lose the Source; an image line it would have verified stays in review via `UNVERIFIED_IMAGE_VALUE`.
 
 **`needs_review` when:**
-- a critical field (price, currency, pack size, UOM, ingredients/strength) is failed, or is unverified on an image Source;
+- a critical field (price, currency, pack size, UOM, ingredients/strength) is failed, or is unverified on an image Source (`UNVERIFIED_IMAGE_VALUE`). An image Source is one the model read as images: a photo or a scanned PDF;
 - the line is in a Conflict;
 - the line has a `revision_note`.
 
@@ -221,6 +227,16 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 Both pack images are scans of the Andina PDF, so expected values come from the clean PDF. Expected outcome:
 - **`scan_02`** (skewed, noisy, columns visually misaligned) mostly verifies via the line totals.
 - **`scan_03`** items 01–03 (unit prices under glare) go to review.
+
+**Result** (flash-lite extracts, flash second-reads):
+- **`scan_02`**: 3 of 6 lines `auto_ok`, every field verified by the line total and agreeing reads. Line 1 has a misread unit price (0.0094 for 0.0091). Both reads made the same misread, so agreement couldn't catch it; the line-total check and the Conflict with the PDF did. Lines 4 and 6 state no pack size, as in the clean PDF, which sends those lines to review too.
+- **`scan_03`**: the three glare-hidden unit prices come back empty and those lines are `needs_review`. The first read split one row into two (7 lines against 6), so the reads weren't compared and every line is in review.
+
+How to read the `scan_02` number: the clean PDF itself can auto-accept only 4 of the 6 lines, since 2 state no pack size. Of those 4, the scan auto-accepts 3 and correctly flags the 4th as a misread. Accepting that line would be the actual failure. The prompt wasn't tuned to raise the number: that would fit it to the sample (ADR-0001).
+
+Two reads from one provider made the same misread on `scan_02`, which is the correlated-error risk ADR-0004 names. The arithmetic checks are the stronger signal. For the same reason, agreeing reads show the reads match, not that they're right: two reads that both guessed a hidden value would verify it. The prompt rule against guessing is the only guard, so a line total, where present, matters more than agreement.
+
+Line detail gives the Source to show for an image line, the image file or the scanned PDF.
 
 **Write-up note:** a dedicated OCR engine would give per-word confidence. That was traded for simplicity, and second-read disagreement is the signal instead. Both reads come from one provider, so their errors are less independent.
 
@@ -362,5 +378,5 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 | Uncertainty signalling | §6, §7, ADR-0004 |
 | Production readiness | Column-mapping cache, provider-agnostic models with fallbacks, paid or no-training tier for PII, FastAPI review app, tracing |
 | CI/CD and infrastructure | Cached eval as regression gate, containerized worker, queue-based scaling |
-| Limitations | Whole-table serialization, no OCR confidence, single-provider second read, alternative offers not extracted, exact dosage-form matching |
+| Limitations | Whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching |
 | Data model reflection | §5 table |

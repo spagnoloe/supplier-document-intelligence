@@ -81,6 +81,12 @@ def ingest_scan(write_source, store, line, **kwargs):
     )
 
 
+def arithmetic_reasons(line) -> set[tuple[str, str | None]]:
+    """A scan also flags the critical fields arithmetic leaves unchecked; these tests are
+    about what arithmetic itself flags."""
+    return {(code, field) for code, field in reasons_of(line) if code == "ARITHMETIC_MISMATCH"}
+
+
 def test_consistent_unit_and_pack_prices_verify_each_other(write_source, store, read_model):
     # 0.42 is 12.50 / 30 rounded to the cent: within tolerance.
     ingest_scan(write_source, store, make_line(pack_size=30, unit_price=0.42, pack_price=12.5))
@@ -101,7 +107,7 @@ def test_inconsistent_unit_and_pack_prices_fail_with_arithmetic_mismatch(
     ingest_scan(write_source, store, make_line(pack_size=30, unit_price=0.5, pack_price=12.5))
 
     [line] = read_model.quotation_lines()
-    assert (line.review_status, reasons_of(line)) == (
+    assert (line.review_status, arithmetic_reasons(line)) == (
         "needs_review",
         {
             ("ARITHMETIC_MISMATCH", "unit_price"),
@@ -149,7 +155,7 @@ def test_line_total_mismatch_fails_the_fields_involved(write_source, store, read
     ingest_scan(write_source, store, line)
 
     [line] = read_model.quotation_lines()
-    assert (line.review_status, reasons_of(line)) == (
+    assert (line.review_status, arithmetic_reasons(line)) == (
         "needs_review",
         {
             ("ARITHMETIC_MISMATCH", "quantity"),
@@ -278,7 +284,7 @@ def test_inconsistent_tier_prices_fail_with_arithmetic_mismatch(write_source, st
     ingest_scan(write_source, store, make_line(pack_size=30, pack_price=None, price_tiers=tiers))
 
     [line] = read_model.quotation_lines()
-    assert (line.review_status, reasons_of(line) - {("TIERED_PRICING", None)}) == (
+    assert (line.review_status, arithmetic_reasons(line)) == (
         "needs_review",
         {("ARITHMETIC_MISMATCH", "price_tiers"), ("ARITHMETIC_MISMATCH", "pack_size")},
     )

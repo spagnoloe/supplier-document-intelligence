@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS documents (
     status TEXT NOT NULL CHECK (status IN ('processed', 'failed', 'skipped_unsupported_type')),
     document_type TEXT,
     error TEXT,
+    -- 1 when the model read the Source as images (a photo or a scanned PDF).
+    read_as_images INTEGER NOT NULL DEFAULT 0 CHECK (read_as_images IN (0, 1)),
     processed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS quotations (
@@ -121,6 +123,7 @@ class ConflictRecord(BaseModel):
 _BACKFILLS = {
     ("quotation_lines", "verification_status"): "review_status",
     ("review_reasons", "origin"): "'verification'",
+    ("documents", "read_as_images"): "0",
 }
 
 
@@ -147,10 +150,17 @@ class Store:
         file_type: str | None,
         quotation: Quotation,
         verifications: list[LineVerification],
+        *,
+        read_as_images: bool = False,
     ) -> None:
         with connect(self.db_path) as conn:
             doc_id = self._replace_document(
-                conn, source_path, file_type, "processed", quotation.document_type
+                conn,
+                source_path,
+                file_type,
+                "processed",
+                quotation.document_type,
+                read_as_images=read_as_images,
             )
             terms = quotation.model_dump(mode="json", exclude={"document_type", "lines"})
             quotation_id = _insert(conn, "quotations", {"document_id": doc_id, **terms})
@@ -236,6 +246,8 @@ class Store:
         status: ProcessingStatus,
         document_type: str | None,
         error: str | None = None,
+        *,
+        read_as_images: bool = False,
     ) -> int:
         conn.execute("DELETE FROM documents WHERE source_path = ?", (source_path,))
         return _insert(
@@ -247,6 +259,7 @@ class Store:
                 "status": status,
                 "document_type": document_type,
                 "error": error,
+                "read_as_images": int(read_as_images),
             },
         )
 

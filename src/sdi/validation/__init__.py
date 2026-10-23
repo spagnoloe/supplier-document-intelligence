@@ -1,11 +1,14 @@
 """Per-field verification and review status for Quotation lines (ADR-0004).
 
 Every non-empty field, and every critical field, is marked verified, unverified or failed
-by independent checks; the model's own confidence is never used. A line needs review when
-a critical field fails or when it carries a revision. Every flag is a Review reason.
+by independent checks, including a second read of the Source by a stronger model; the
+model's own confidence is never used. A line needs review when
+a critical field fails, when a critical field read from an image is left unverified, or when
+it carries a revision. Every flag is a Review reason.
 """
 
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Sequence
 from enum import StrEnum
 from typing import Literal, get_args
 
@@ -44,6 +47,9 @@ class ReasonCode(StrEnum):
     REVISION = "REVISION"
     TIERED_PRICING = "TIERED_PRICING"
     FX_UNAVAILABLE = "FX_UNAVAILABLE"
+    UNVERIFIED_IMAGE_VALUE = "UNVERIFIED_IMAGE_VALUE"
+    SECOND_READ_DISAGREEMENT = "SECOND_READ_DISAGREEMENT"
+    SECOND_READ_UNAVAILABLE = "SECOND_READ_UNAVAILABLE"
     # Raised by reconciliation across Sources, not by verification of one Source.
     IN_CONFLICT = "IN_CONFLICT"
     NO_QUOTE_REFERENCE = "NO_QUOTE_REFERENCE"
@@ -74,6 +80,10 @@ _NON_MONEY_CODES = frozenset(
     {"XAG", "XAU", "XPD", "XPT", "XDR", "XBA", "XBB", "XBC", "XBD", "XSU", "XUA", "XTS", "XXX"}
 )
 
+# Fields two reads of one Source should give alike. Not the dosage form: it is a standardized
+# term the model chooses, more or less specific, not a value it reads off the page.
+_SECOND_READ_FIELDS = tuple(f for f in get_args(LineField) if f != "dosage_form")
+
 # Relative tolerance for a float value against the number written in its evidence.
 _NUMBER_TOLERANCE = 1e-9
 
@@ -83,10 +93,33 @@ _NUMBER_TOLERANCE = 1e-9
 _ARITHMETIC_TOLERANCE = 0.01
 
 
-def verify(quotation: Quotation, content: DocumentContent, fx: FxSource) -> list[LineVerification]:
+def verify(
+    quotation: Quotation,
+    content: DocumentContent,
+    fx: FxSource,
+    second_read: Quotation | Exception | None = None,
+) -> list[LineVerification]:
+    """Verify each line of the first read. With a second read, each image line, and each
+    line whose critical checks failed, is compared with the second read's line in the same
+    position. A second read that failed (an exception) leaves those lines with a note."""
     # Without source text (images) the evidence check can't run, so fields stay unverified.
     text = SourceText(content.text) if content.text else None
-    return [_verify_line(line, quotation, text, fx) for line in quotation.lines]
+    image = bool(content.images)
+    reread = None if second_read is None else _SecondRead(second_read, quotation)
+    return [
+        _verify_line(line, n, quotation, text, image, reread, fx)
+        for n, line in enumerate(quotation.lines)
+    ]
+
+
+def wants_second_read(content: DocumentContent, verifications: Sequence[LineVerification]) -> bool:
+    """A second read is worth its cost for an image, where nothing else checks most fields,
+    and for a line whose critical checks failed."""
+    return bool(content.images) or any(_critical_failed(v.fields) for v in verifications)
+
+
+def _critical_failed(fields: dict[str, FieldResult]) -> bool:
+    return any(result == "failed" for field, result in fields.items() if field in CRITICAL_FIELDS)
 
 
 class _LineChecks:
@@ -124,19 +157,57 @@ class _LineChecks:
         self.note(code, field, message)
 
     def result(self, prices: DerivedPrices) -> LineVerification:
-        critical_failed = any(
-            result == "failed" for field, result in self.fields.items() if field in CRITICAL_FIELDS
-        )
         status: ReviewStatus = (
-            "needs_review" if critical_failed or self._forced_review else "auto_ok"
+            "needs_review" if _critical_failed(self.fields) or self._forced_review else "auto_ok"
         )
         return LineVerification(
             fields=self.fields, reasons=self.reasons, review_status=status, prices=prices
         )
 
 
+class _SecondRead:
+    """The second read's lines, paired with the first read's by position. When it failed,
+    has a different number of lines, or lists other products in the same positions, no line
+    can be paired, and `skipped` says why. Pairing by INN only, not by strength, keeps a
+    misread strength a disagreement rather than a different product."""
+
+    def __init__(self, outcome: Quotation | Exception, first: Quotation):
+        first_count = len(first.lines)
+        self.quotation = outcome if isinstance(outcome, Quotation) else None
+        self.skipped: tuple[ReasonCode, str] | None = None
+        if isinstance(outcome, Exception):
+            self.skipped = (
+                ReasonCode.SECOND_READ_UNAVAILABLE,
+                f"Second read failed ({type(outcome).__name__}: {outcome}); lines weren't compared",
+            )
+        elif len(outcome.lines) != first_count:
+            self.skipped = (
+                ReasonCode.SECOND_READ_DISAGREEMENT,
+                f"Second read found {len(outcome.lines)} lines, first read {first_count}; "
+                "lines weren't compared",
+            )
+        elif any(
+            a and b and a != b
+            for a, b in zip(map(_inns, first.lines), map(_inns, outcome.lines), strict=True)
+        ):
+            self.skipped = (
+                ReasonCode.SECOND_READ_DISAGREEMENT,
+                "Second read lists other products in the same positions; lines weren't compared",
+            )
+
+
+def _inns(line: QuotationLine) -> set[tuple[str, ...]]:
+    return {_words(i.inn) for i in line.active_ingredients}
+
+
 def _verify_line(
-    line: QuotationLine, quotation: Quotation, text: SourceText | None, fx: FxSource
+    line: QuotationLine,
+    n: int,
+    quotation: Quotation,
+    text: SourceText | None,
+    image: bool,
+    reread: _SecondRead | None,
+    fx: FxSource,
 ) -> LineVerification:
     checks = _LineChecks()
     for field in get_args(LineField):
@@ -167,7 +238,81 @@ def _verify_line(
             None,
             f"Price depends on order volume; headline price is {basis}",
         )
+    if reread is not None and (image or _critical_failed(checks.fields)):
+        _check_second_read(checks, line, quotation, n, reread)
+    if image:
+        _check_image_values(checks)
     return checks.result(prices)
+
+
+def _check_second_read(
+    checks: _LineChecks, line: QuotationLine, quotation: Quotation, n: int, reread: _SecondRead
+) -> None:
+    """A field both reads give the same value is verified; one they give differently fails,
+    since at least one read misread it. A value one read leaves empty (unreadable) is
+    neither: nothing confirms it, and nothing contradicts it."""
+    if reread.skipped:
+        checks.note(reread.skipped[0], None, reread.skipped[1])
+        return
+    assert reread.quotation is not None  # a read that failed is skipped
+    other = reread.quotation.lines[n]
+    for field in _SECOND_READ_FIELDS:
+        first, _ = _field_value(line, quotation, field)
+        second, _ = _field_value(other, reread.quotation, field)
+        if first in (None, []) or second in (None, []):
+            continue
+        if _comparable(first) == _comparable(second):
+            checks.verified(field)
+        else:
+            checks.failed(
+                field,
+                ReasonCode.SECOND_READ_DISAGREEMENT,
+                f"Second read gives {_display(second)}, first read {_display(first)}",
+            )
+
+
+def _comparable(value: object) -> object:
+    """A value as two reads of one Source can be expected to agree on: case, punctuation
+    and list order ignored, and an ingredient by its INN and strength, not its spelling."""
+    if isinstance(value, str):
+        return _words(value)
+    if isinstance(value, BaseModel):
+        return _comparable(value.model_dump(exclude={"name_as_written"}))
+    if isinstance(value, dict):
+        return tuple(sorted((k, _comparable(v)) for k, v in value.items()))
+    if isinstance(value, list):
+        return tuple(sorted((_comparable(v) for v in value), key=repr))
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    return value
+
+
+def _words(text: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"\w+", text.casefold()))
+
+
+def _display(value: object) -> str:
+    if isinstance(value, float):
+        return f"{value:g}"
+    if isinstance(value, list):
+        return "; ".join(_display(v) for v in value)
+    if isinstance(value, BaseModel):
+        return ", ".join(
+            f"{k} {_display(v)}" for k, v in value.model_dump().items() if v is not None
+        )
+    return str(value)
+
+
+def _check_image_values(checks: _LineChecks) -> None:
+    """A model can misread an image without anything in the Source contradicting it, so a
+    critical value read from one needs a check that confirms it (ADR-0004)."""
+    for field, result in list(checks.fields.items()):
+        if field in CRITICAL_FIELDS and result == "unverified":
+            checks.force_review(
+                ReasonCode.UNVERIFIED_IMAGE_VALUE,
+                field,
+                f"{field} was read from an image and no check confirms it",
+            )
 
 
 def _field_value(

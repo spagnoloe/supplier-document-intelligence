@@ -1,16 +1,20 @@
 import json
 import sqlite3
 from datetime import date
+from io import BytesIO
 
+import pytest
 from conftest import (
     FakeExtractor,
     InMemoryFxSource,
     make_email,
+    make_image,
     make_quotation,
     make_text_pdf,
     make_workbook,
 )
 from langchain_core.exceptions import OutputParserException
+from PIL import Image
 
 from sdi.pipeline import ingest
 from sdi.store import Store
@@ -179,14 +183,25 @@ def test_html_only_email_reaches_extractor_as_text_without_markup(write_source, 
     assert "color: red" not in received.text
 
 
-def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, store):
-    source = write_source("scan.pdf", make_text_pdf())
+@pytest.mark.parametrize(
+    "lines",
+    [
+        pytest.param((), id="no text layer"),
+        pytest.param(("Page 1 of 1",), id="only a stray page number"),
+    ],
+)
+def test_pdf_with_almost_no_text_reaches_extractor_as_page_images(write_source, store, lines):
+    source = write_source("scan.pdf", make_text_pdf(*lines))
     extractor = FakeExtractor({"scan.pdf": make_quotation("Alpha")})
 
     ingest([source], extractor, InMemoryFxSource(), store)
 
     [received] = extractor.received
     assert received.text is None
+    [page] = received.images
+    assert page.startswith(b"\x89PNG")
+    # Rendered at a resolution the model can read print at, not the 72 dpi of the page box.
+    assert Image.open(BytesIO(page)).width >= 2 * 612
 
 
 def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, read_model):
@@ -202,6 +217,7 @@ def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, re
             ("quotation_lines", "verification_status"),
             ("quotation_lines", "headline_unit_price"),
             ("review_reasons", "origin"),
+            ("documents", "read_as_images"),
         ]:
             conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
 
@@ -210,6 +226,7 @@ def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, re
     assert {s.status for s in read_model.document_statuses()} == {"processed"}
     lines = {line.inns[0]: line for line in read_model.quotation_lines()}
     assert lines["alpha"].review_status == before.review_status
+    assert read_model.line_detail(lines["alpha"].id).source_image is None
     assert lines["beta"].headline_unit_price == 0.1
 
 
@@ -258,3 +275,17 @@ def test_workbook_without_cell_values_reaches_extractor_with_no_text(write_sourc
 
     [received] = extractor.received
     assert received.text is None
+
+
+@pytest.mark.parametrize("name", ["photo.png", "photo.jpg", "photo.JPEG"])
+def test_image_file_reaches_extractor_as_that_image(write_source, store, read_model, name):
+    image = make_image()
+    source = write_source(name, image)
+    extractor = FakeExtractor({name: make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert (received.text, received.images) == (None, [image])
+    [status] = read_model.document_statuses()
+    assert (status.status, status.line_count) == ("processed", 1)

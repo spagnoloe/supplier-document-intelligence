@@ -1,4 +1,8 @@
-"""Ingest: one LangGraph graph per Source (load → extract → validate → store), run as a batch."""
+"""Ingest: one LangGraph graph per Source, run as a batch.
+
+load → extract → validate → [second read] → store. The second read is a conditional edge:
+it runs for image Sources and for Sources with a line whose critical checks failed.
+"""
 
 from collections.abc import Callable, Sequence
 from datetime import date
@@ -16,7 +20,7 @@ from sdi.loaders import DocumentContent, NoLoaderError, file_type, load
 from sdi.read_model import ReadModel
 from sdi.reconcile import reconcile
 from sdi.store import Store
-from sdi.validation import LineVerification, verify
+from sdi.validation import LineVerification, verify, wants_second_read
 
 Extractor = Callable[[DocumentContent], Quotation]
 
@@ -31,7 +35,13 @@ class SourceState(TypedDict, total=False):
     verifications: list[LineVerification]
 
 
-def build_graph(extractor: Extractor, fx_source: FxSource, store: Store, max_attempts: int):
+def build_graph(
+    extractor: Extractor,
+    second_reader: Extractor | None,
+    fx_source: FxSource,
+    store: Store,
+    max_attempts: int,
+):
     fx = _cached(fx_source, store)
 
     def load_node(state: SourceState) -> SourceState:
@@ -43,10 +53,29 @@ def build_graph(extractor: Extractor, fx_source: FxSource, store: Store, max_att
     def validate_node(state: SourceState) -> SourceState:
         return {"verifications": verify(state["quotation"], state["content"], fx)}
 
+    def after_validate(state: SourceState) -> str:
+        wanted = second_reader is not None and wants_second_read(
+            state["content"], state["verifications"]
+        )
+        return "second_read" if wanted else "store"
+
+    def second_read_node(state: SourceState) -> SourceState:
+        assert second_reader is not None
+        second = _second_read(second_reader, state["content"], max_attempts)
+        return {
+            "verifications": verify(state["quotation"], state["content"], fx, second_read=second)
+        }
+
     def store_node(state: SourceState) -> SourceState:
         path, quotation = state["source_path"], state["quotation"]
         if quotation.document_type in SUPPORTED_DOCUMENT_TYPES:
-            store.save_processed(path, file_type(Path(path)), quotation, state["verifications"])
+            store.save_processed(
+                path,
+                file_type(Path(path)),
+                quotation,
+                state["verifications"],
+                read_as_images=bool(state["content"].images),
+            )
         else:
             store.save_skipped(path, file_type(Path(path)), quotation.document_type)
         return {}
@@ -61,11 +90,13 @@ def build_graph(extractor: Extractor, fx_source: FxSource, store: Store, max_att
         ),
     )
     graph.add_node("validate", validate_node)
+    graph.add_node("second_read", second_read_node)
     graph.add_node("store", store_node)
     graph.add_edge(START, "load")
     graph.add_edge("load", "extract")
     graph.add_edge("extract", "validate")
-    graph.add_edge("validate", "store")
+    graph.add_conditional_edges("validate", after_validate, ["second_read", "store"])
+    graph.add_edge("second_read", "store")
     graph.add_edge("store", END)
     return graph.compile()
 
@@ -76,10 +107,11 @@ def ingest(
     fx_source: FxSource,
     store: Store,
     *,
+    second_reader: Extractor | None = None,
     max_concurrency: int = 2,
     max_attempts: int = 3,
 ) -> None:
-    graph = build_graph(extractor, fx_source, store, max_attempts)
+    graph = build_graph(extractor, second_reader, fx_source, store, max_attempts)
     inputs = [{"source_path": str(path)} for path in sources]
     results = graph.batch(
         inputs, config={"max_concurrency": max_concurrency}, return_exceptions=True
@@ -90,6 +122,23 @@ def ingest(
             store.save_failed(str(path), file_type(path), _error_message(result))
     # Reconciliation spans every stored Source, including those from earlier runs.
     store.save_reconciliation(*reconcile(ReadModel(store.db_path).quotation_lines()))
+
+
+def _second_read(
+    reader: Extractor, content: DocumentContent, max_attempts: int
+) -> Quotation | Exception:
+    """Retried like extraction, but a failure is returned, not raised: the second read only
+    adds confidence, so losing it (e.g. to a quota error) must not lose the first read."""
+    error: Exception | None = None
+    for _ in range(max_attempts):
+        try:
+            return reader(content)
+        except STRUCTURED_OUTPUT_ERRORS as malformed:
+            error = malformed
+        except Exception as unavailable:
+            return unavailable
+    assert error is not None
+    return error
 
 
 def _cached(fx_source: FxSource, store: Store) -> FxSource:

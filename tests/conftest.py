@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from openpyxl import Workbook
+from PIL import Image
 
 from sdi.extraction.schema import ActiveIngredient, Quotation, QuotationLine
 from sdi.fx import FxRate
@@ -116,6 +117,13 @@ def make_workbook(sheets: dict[str, list[list[object]]]) -> bytes:
             sheet.append(row)
     out = BytesIO()
     workbook.save(out)
+    return out.getvalue()
+
+
+def make_image(size: tuple[int, int] = (40, 20)) -> bytes:
+    """A small grey PNG standing in for a photographed or scanned page."""
+    out = BytesIO()
+    Image.new("L", size, color=200).save(out, format="PNG")
     return out.getvalue()
 
 

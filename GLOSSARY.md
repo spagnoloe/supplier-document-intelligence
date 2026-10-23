@@ -86,6 +86,10 @@ _Avoid_: Conflict
 The verbatim span of a Source that a field value was read from.
 _Avoid_: Citation, quote
 
+**Second read**:
+A re-extraction of a Source by a stronger model, compared field by field with the first read. It runs for image Sources and for Sources with a line whose critical checks failed.
+_Avoid_: Double-check, re-run, verification pass
+
 **Review reason**:
 A plain-language statement of why a Quotation line needs a human to look at it.
 _Avoid_: Warning, error

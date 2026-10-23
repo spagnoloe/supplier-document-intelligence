@@ -48,4 +48,10 @@ def load(path: Path) -> DocumentContent:
     return loader(path)
 
 
-from sdi.loaders import email_loader, excel_loader, json_loader, pdf_loader  # noqa: E402, F401
+from sdi.loaders import (  # noqa: E402, F401
+    email_loader,
+    excel_loader,
+    image_loader,
+    json_loader,
+    pdf_loader,
+)
