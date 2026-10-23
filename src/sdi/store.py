@@ -72,7 +72,7 @@ class Store:
         with connect(self.db_path) as conn:
             conn.executescript(SCHEMA)
 
-    def save_processed(self, source_path: str, file_type: str, quotation: Quotation) -> None:
+    def save_processed(self, source_path: str, file_type: str | None, quotation: Quotation) -> None:
         with connect(self.db_path) as conn:
             doc_id = self._replace_document(
                 conn, source_path, file_type, "processed", quotation.document_type
@@ -124,7 +124,7 @@ class Store:
                 ],
             )
 
-    def save_skipped(self, source_path: str, file_type: str, document_type: str) -> None:
+    def save_skipped(self, source_path: str, file_type: str | None, document_type: str) -> None:
         with connect(self.db_path) as conn:
             self._replace_document(
                 conn, source_path, file_type, "skipped_unsupported_type", document_type

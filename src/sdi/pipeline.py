@@ -1,6 +1,6 @@
 """Ingest: one LangGraph graph per Source (load → extract → store), run as a batch."""
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TypedDict
 
@@ -8,7 +8,7 @@ from langgraph.graph import END, START, StateGraph
 
 from sdi.extraction.schema import Quotation
 from sdi.fx import FxSource
-from sdi.loaders import DocumentContent, load
+from sdi.loaders import DocumentContent, file_type, load
 from sdi.store import Store
 
 Extractor = Callable[[DocumentContent], Quotation]
@@ -28,10 +28,8 @@ def build_graph(extractor: Extractor, store: Store):
         return {"quotation": extractor(state["content"])}
 
     def store_node(state: SourceState) -> SourceState:
-        content = state["content"]
-        store.save_processed(
-            state["source_path"], content.metadata["file_type"], state["quotation"]
-        )
+        path = state["source_path"]
+        store.save_processed(path, file_type(Path(path)), state["quotation"])
         return {}
 
     graph = StateGraph(SourceState)
@@ -46,7 +44,7 @@ def build_graph(extractor: Extractor, store: Store):
 
 
 def ingest(
-    sources: Iterable[Path],
+    sources: Sequence[Path],
     extractor: Extractor,
     fx_source: FxSource,
     store: Store,
@@ -55,4 +53,10 @@ def ingest(
 ) -> None:
     graph = build_graph(extractor, store)
     inputs = [{"source_path": str(path)} for path in sources]
-    graph.batch(inputs, config={"max_concurrency": max_concurrency})
+    results = graph.batch(
+        inputs, config={"max_concurrency": max_concurrency}, return_exceptions=True
+    )
+    # A failure anywhere in one Source's graph is recorded against that Source only.
+    for path, result in zip(sources, results, strict=True):
+        if isinstance(result, Exception):
+            store.save_failed(str(path), file_type(path), f"{type(result).__name__}: {result}")

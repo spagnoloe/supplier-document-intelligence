@@ -20,3 +20,27 @@ def test_json_source_lines_are_readable_through_read_model(write_source, store, 
     lines = read_model.quotation_lines()
     assert [line.inns for line in lines] == [["alpha"], ["beta"]]
     assert {line.supplier for line in lines} == {"Synthetic Supplier Ltd"}
+
+
+def test_failing_source_is_recorded_and_others_still_process(write_source, store, read_model):
+    good = write_source("good.json", "{}")
+    bad = write_source("bad.json", "{}")
+    extractor = FakeExtractor(
+        {"good.json": make_quotation("Alpha"), "bad.json": RuntimeError("model unavailable")}
+    )
+
+    ingest([bad, good], extractor, InMemoryFxSource(), store)
+
+    statuses = {s.source: s for s in read_model.document_statuses()}
+    assert statuses[str(good)].status == "processed"
+    assert statuses[str(bad)].status == "failed"
+    assert "model unavailable" in statuses[str(bad)].error
+
+
+def test_malformed_json_source_is_recorded_as_failed(write_source, store, read_model):
+    broken = write_source("broken.json", "{not json")
+
+    ingest([broken], FakeExtractor({}), InMemoryFxSource(), store)
+
+    [status] = read_model.document_statuses()
+    assert (status.status, status.file_type) == ("failed", "json")

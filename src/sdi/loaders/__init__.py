@@ -36,6 +36,10 @@ def register(*extensions: str) -> Callable[[Loader], Loader]:
     return decorate
 
 
+def file_type(path: Path) -> str | None:
+    return path.suffix.lower().lstrip(".") or None
+
+
 def load(path: Path) -> DocumentContent:
     ext = path.suffix.lower()
     loader = _LOADERS.get(ext)
