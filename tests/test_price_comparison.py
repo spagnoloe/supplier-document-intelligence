@@ -38,6 +38,7 @@ def amoxicillin(
     pack_price: float | None = 12.5,
     unit_price: float | None = None,
     name: str = "Amoxicillin",
+    inn: str = "amoxicillin",
     dosage_form: str = "Capsule",
 ) -> QuotationLine:
     spans = {
@@ -50,9 +51,7 @@ def amoxicillin(
     }
     return QuotationLine(
         active_ingredients=[
-            ActiveIngredient(
-                name_as_written=name, inn="amoxicillin", strength_value=500, strength_unit="mg"
-            )
+            ActiveIngredient(name_as_written=name, inn=inn, strength_value=500, strength_unit="mg")
         ],
         dosage_form=dosage_form,
         uom="capsule",
@@ -100,13 +99,17 @@ def test_lines_for_one_product_from_different_quotations_are_grouped_across_salt
         write_source,
         store,
         {
-            "a.json": quotation(amoxicillin(name="Amoxicillin trihydrate")),
+            # The INN should come without the salt, but a model sometimes leaves it in.
+            "a.json": quotation(
+                amoxicillin(name="Amoxicillin trihydrate", inn="Amoxicillin Trihydrate")
+            ),
             "b.json": quotation(amoxicillin(), supplier="Other Pharma", quote_ref="OP-1"),
         },
     )
 
     [group] = read_model.price_comparisons()
-    assert group.inns == ["amoxicillin"]
+    # Each line keeps its INN as extracted; only the grouping looks past the salt.
+    assert [line.inns for line in group.lines] == [["Amoxicillin Trihydrate"], ["amoxicillin"]]
     assert group.dosage_form == "Capsule"
     assert [(line.supplier, line.quote_ref) for line in group.lines] == [
         ("Synthetic Pharma Ltd", "SP-77"),
@@ -251,3 +254,42 @@ def test_quotation_stating_no_incoterm_makes_its_group_not_like_for_like(
 
     [group] = read_model.price_comparisons()
     assert "not like-for-like" in group.incoterm_warning
+
+
+def test_price_comparison_leaves_every_review_status_as_verification_set_it(
+    write_source, store, read_model
+):
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(amoxicillin(pack_size=100, pack_price=12.5)),
+            "b.json": quotation(
+                amoxicillin(pack_size=20, pack_price=4.0),
+                supplier="Other Pharma",
+                quote_ref="OP-1",
+                incoterm="CIF",
+            ),
+        },
+    )
+
+    [group] = read_model.price_comparisons()
+    assert group.incoterm_warning is not None
+    assert [(line.review_status, line.review_reasons) for line in group.lines] == [
+        ("auto_ok", []),
+        ("auto_ok", []),
+    ]
+
+
+def test_rerun_replaces_earlier_price_comparisons(write_source, store, read_model):
+    a, b = write_source("a.json", SOURCE), write_source("b.json", SOURCE)
+    other = {"supplier": "Other Pharma", "quote_ref": "OP-1"}
+    quotations = {"a.json": quotation(amoxicillin()), "b.json": quotation(amoxicillin(), **other)}
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+    assert len(read_model.price_comparisons()) == 1
+
+    syrup = amoxicillin(dosage_form="Syrup")
+    ingest([b], FakeExtractor({"b.json": quotation(syrup, **other)}), InMemoryFxSource(), store)
+
+    assert read_model.price_comparisons() == []

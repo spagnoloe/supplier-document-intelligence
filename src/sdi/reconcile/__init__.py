@@ -44,6 +44,18 @@ _LEGAL_FORMS = frozenset(
     }
 )  # fmt: skip
 
+# Salt, ester-counterion and hydrate words a model sometimes leaves on an INN that should
+# name the active moiety ("amoxicillin trihydrate", "tenofovir disoproxil fumarate").
+_SALT_WORDS = frozenset(
+    {
+        "acetate", "anhydrous", "besilate", "besylate", "bitartrate", "bromide", "calcium",
+        "chloride", "citrate", "dihydrate", "dihydrochloride", "fumarate", "hemihydrate",
+        "hydrate", "hydrobromide", "hydrochloride", "hyclate", "magnesium", "maleate",
+        "mesilate", "mesylate", "monohydrate", "phosphate", "potassium", "sodium",
+        "succinate", "sulfate", "sulphate", "tartrate", "trihydrate",
+    }
+)  # fmt: skip
+
 Reasons = list[tuple[int, ReviewReason]]
 
 
@@ -208,10 +220,19 @@ def _conflict_message(conflict: ConflictRecord, lines: dict[int, LineView]) -> s
 
 def _product_key(line: LineView) -> str:
     ingredients = sorted(
-        f"{_words(i.get('inn'))} {i.get('strength_value')} {_words(i.get('strength_unit'), '')}"
+        f"{_moiety(i.get('inn'))} {i.get('strength_value')} {_words(i.get('strength_unit'), '')}"
         for i in line.active_ingredients
     )
     return " + ".join(ingredients) + " | " + _words(line.dosage_form)
+
+
+def _moiety(inn: str | None) -> str:
+    """The INN without trailing salt or hydrate words, keeping at least one word: "sodium
+    chloride" becomes "sodium", not nothing."""
+    words = _words(inn).split()
+    while len(words) > 1 and words[-1] in _SALT_WORDS:
+        words.pop()
+    return " ".join(words)
 
 
 def _supplier_key(supplier: str | None) -> str:
