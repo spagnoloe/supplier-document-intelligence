@@ -6,7 +6,9 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from sdi.extraction.schema import FieldEvidence
 from sdi.store import ProcessingStatus, connect
+from sdi.validation import FieldResult, ReviewReason, ReviewStatus
 
 
 class DocumentStatus(BaseModel):
@@ -16,9 +18,11 @@ class DocumentStatus(BaseModel):
     document_type: str | None
     error: str | None
     line_count: int
+    needs_review_count: int
 
 
 class LineView(BaseModel):
+    id: int
     source: str
     supplier: str | None
     quote_ref: str | None
@@ -37,7 +41,39 @@ class LineView(BaseModel):
     line_total: float | None
     price_tiers: list[dict]
     revision_note: str | None
-    evidence: list[dict]
+    evidence: list[FieldEvidence]
+    review_status: ReviewStatus
+    review_reasons: list[ReviewReason]
+
+
+class FieldDetail(BaseModel):
+    field: str
+    value: object
+    evidence: list[FieldEvidence]
+    result: FieldResult
+    reasons: list[ReviewReason]
+
+
+class LineDetail(BaseModel):
+    line: LineView
+    fields: list[FieldDetail]
+
+
+_LINES_QUERY = """
+    SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, l.line_no,
+           l.brand_name, l.active_ingredients, l.dosage_form, l.uom,
+           l.pack_size, l.unit_price, l.pack_price,
+           COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
+           l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence,
+           l.review_status, l.field_verification, q.evidence AS quotation_evidence,
+           (SELECT json_group_array(json_object('code', r.code, 'field', r.field,
+                                                'message', r.message))
+            FROM (SELECT * FROM review_reasons WHERE line_id = l.id ORDER BY id) r
+           ) AS review_reasons
+    FROM quotation_lines l
+    JOIN quotations q ON q.id = l.quotation_id
+    JOIN documents d ON d.id = q.document_id
+"""
 
 
 class ReadModel:
@@ -48,7 +84,9 @@ class ReadModel:
         with connect(self.db_path) as conn:
             rows = conn.execute(
                 """SELECT d.source_path AS source, d.file_type, d.status, d.document_type,
-                          d.error, COUNT(l.id) AS line_count
+                          d.error, COUNT(l.id) AS line_count,
+                          COUNT(CASE WHEN l.review_status = 'needs_review' THEN 1 END)
+                              AS needs_review_count
                    FROM documents d
                    LEFT JOIN quotations q ON q.document_id = d.id
                    LEFT JOIN quotation_lines l ON l.quotation_id = q.id
@@ -58,23 +96,68 @@ class ReadModel:
         return [DocumentStatus(**dict(r)) for r in rows]
 
     def quotation_lines(self) -> list[LineView]:
+        return [view for view, _ in self._lines("ORDER BY d.source_path, l.line_no")]
+
+    def review_queue(
+        self,
+        *,
+        supplier: str | None = None,
+        review_status: ReviewStatus | None = None,
+        source: str | None = None,
+        reason_code: str | None = None,
+    ) -> list[LineView]:
+        """Lines to review, `needs_review` first; each filter is ignored when None."""
+        return [
+            view
+            for view, _ in self._lines(
+                """WHERE (:supplier IS NULL OR q.supplier = :supplier)
+                     AND (:review_status IS NULL OR l.review_status = :review_status)
+                     AND (:source IS NULL OR d.source_path = :source)
+                     AND (:reason_code IS NULL OR EXISTS (
+                          SELECT 1 FROM review_reasons r
+                          WHERE r.line_id = l.id AND r.code = :reason_code))
+                   ORDER BY l.review_status = 'needs_review' DESC, d.source_path, l.line_no""",
+                {
+                    "supplier": supplier,
+                    "review_status": review_status,
+                    "source": source,
+                    "reason_code": reason_code,
+                },
+            )
+        ]
+
+    def line_detail(self, line_id: int) -> LineDetail:
+        """Each verified field's value, its evidence, its verification result and the
+        reasons raised against it."""
+        [(view, row)] = self._lines("WHERE l.id = :id", {"id": line_id})
+        fields = []
+        for field, result in json.loads(row["field_verification"]).items():
+            evidence = [e for e in view.evidence if e.field == field]
+            if field == "currency" and not evidence:  # inherited from the Quotation
+                evidence = [
+                    FieldEvidence(**e)
+                    for e in json.loads(row["quotation_evidence"])
+                    if e["field"] == "currency"
+                ]
+            fields.append(
+                FieldDetail(
+                    field=field,
+                    value=getattr(view, field),
+                    evidence=evidence,
+                    result=result,
+                    reasons=[r for r in view.review_reasons if r.field == field],
+                )
+            )
+        return LineDetail(line=view, fields=fields)
+
+    def _lines(self, clause: str, params: dict | None = None) -> list[tuple[LineView, dict]]:
         with connect(self.db_path) as conn:
-            rows = conn.execute(
-                """SELECT d.source_path AS source, q.supplier, q.quote_ref, l.line_no,
-                          l.brand_name, l.active_ingredients, l.dosage_form, l.uom,
-                          l.pack_size, l.unit_price, l.pack_price,
-                          COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
-                          l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence
-                   FROM quotation_lines l
-                   JOIN quotations q ON q.id = l.quotation_id
-                   JOIN documents d ON d.id = q.document_id
-                   ORDER BY d.source_path, l.line_no"""
-            ).fetchall()
+            rows = conn.execute(_LINES_QUERY + clause, params or {}).fetchall()
         views = []
         for r in rows:
             row = dict(r)
-            for col in ("active_ingredients", "price_tiers", "evidence"):
+            for col in ("active_ingredients", "price_tiers", "evidence", "review_reasons"):
                 row[col] = json.loads(row[col])
             row["inns"] = [i["inn"] for i in row["active_ingredients"]]
-            views.append(LineView(**row))
+            views.append((LineView(**row), row))
         return views

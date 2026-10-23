@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from sdi.extraction.schema import Quotation
+from sdi.validation import LineVerification
 
 ProcessingStatus = Literal["processed", "failed", "skipped_unsupported_type"]
 
@@ -54,7 +55,17 @@ CREATE TABLE IF NOT EXISTS quotation_lines (
     line_total REAL,
     price_tiers TEXT NOT NULL,
     revision_note TEXT,
-    evidence TEXT NOT NULL
+    evidence TEXT NOT NULL,
+    review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'auto_ok')),
+    field_verification TEXT NOT NULL
+);
+-- No CHECK on code: new Review reason codes need no schema change.
+CREATE TABLE IF NOT EXISTS review_reasons (
+    id INTEGER PRIMARY KEY,
+    line_id INTEGER NOT NULL REFERENCES quotation_lines(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    field TEXT,
+    message TEXT NOT NULL
 );
 """
 
@@ -75,20 +86,35 @@ class Store:
         with connect(self.db_path) as conn:
             conn.executescript(SCHEMA)
 
-    def save_processed(self, source_path: str, file_type: str | None, quotation: Quotation) -> None:
+    def save_processed(
+        self,
+        source_path: str,
+        file_type: str | None,
+        quotation: Quotation,
+        verifications: list[LineVerification],
+    ) -> None:
         with connect(self.db_path) as conn:
             doc_id = self._replace_document(
                 conn, source_path, file_type, "processed", quotation.document_type
             )
             terms = quotation.model_dump(mode="json", exclude={"document_type", "lines"})
             quotation_id = _insert(conn, "quotations", {"document_id": doc_id, **terms})
-            for line_no, line in enumerate(quotation.lines, start=1):
+            lines = zip(quotation.lines, verifications, strict=True)
+            for line_no, (line, verification) in enumerate(lines, start=1):
                 values = line.model_dump(mode="json")
-                _insert(
+                line_id = _insert(
                     conn,
                     "quotation_lines",
-                    {"quotation_id": quotation_id, "line_no": line_no, **values},
+                    {
+                        "quotation_id": quotation_id,
+                        "line_no": line_no,
+                        **values,
+                        "review_status": verification.review_status,
+                        "field_verification": verification.fields,
+                    },
                 )
+                for reason in verification.reasons:
+                    _insert(conn, "review_reasons", {"line_id": line_id, **reason.model_dump()})
 
     def save_skipped(self, source_path: str, file_type: str | None, document_type: str) -> None:
         with connect(self.db_path) as conn:

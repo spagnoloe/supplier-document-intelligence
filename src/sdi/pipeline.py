@@ -1,4 +1,4 @@
-"""Ingest: one LangGraph graph per Source (load → extract → store), run as a batch."""
+"""Ingest: one LangGraph graph per Source (load → extract → validate → store), run as a batch."""
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -13,6 +13,7 @@ from sdi.extraction.schema import SUPPORTED_DOCUMENT_TYPES, Quotation
 from sdi.fx import FxSource
 from sdi.loaders import DocumentContent, NoLoaderError, file_type, load
 from sdi.store import Store
+from sdi.validation import LineVerification, verify
 
 Extractor = Callable[[DocumentContent], Quotation]
 
@@ -24,6 +25,7 @@ class SourceState(TypedDict, total=False):
     source_path: str
     content: DocumentContent
     quotation: Quotation
+    verifications: list[LineVerification]
 
 
 def build_graph(extractor: Extractor, store: Store, max_attempts: int):
@@ -33,10 +35,13 @@ def build_graph(extractor: Extractor, store: Store, max_attempts: int):
     def extract_node(state: SourceState) -> SourceState:
         return {"quotation": extractor(state["content"])}
 
+    def validate_node(state: SourceState) -> SourceState:
+        return {"verifications": verify(state["quotation"], state["content"])}
+
     def store_node(state: SourceState) -> SourceState:
         path, quotation = state["source_path"], state["quotation"]
         if quotation.document_type in SUPPORTED_DOCUMENT_TYPES:
-            store.save_processed(path, file_type(Path(path)), quotation)
+            store.save_processed(path, file_type(Path(path)), quotation, state["verifications"])
         else:
             store.save_skipped(path, file_type(Path(path)), quotation.document_type)
         return {}
@@ -50,10 +55,12 @@ def build_graph(extractor: Extractor, store: Store, max_attempts: int):
             max_attempts=max_attempts, initial_interval=0.1, retry_on=STRUCTURED_OUTPUT_ERRORS
         ),
     )
+    graph.add_node("validate", validate_node)
     graph.add_node("store", store_node)
     graph.add_edge(START, "load")
     graph.add_edge("load", "extract")
-    graph.add_edge("extract", "store")
+    graph.add_edge("extract", "validate")
+    graph.add_edge("validate", "store")
     graph.add_edge("store", END)
     return graph.compile()
 
