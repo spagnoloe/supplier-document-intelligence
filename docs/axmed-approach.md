@@ -311,6 +311,8 @@ Reconciliation never merges or picks a winner.
 
 The reviewer types their name in the sidebar; there is no login. Production would take it from authentication.
 
+Source paths are stored as `sdi ingest` was given them, so the UI shows source images when launched from the same folder, and says so when it can't find the file. Production would keep Sources in object storage under a stable key.
+
 ---
 
 ## 10. Framework and model (ADR-0005)

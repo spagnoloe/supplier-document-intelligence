@@ -14,18 +14,10 @@ import streamlit as st
 
 from sdi.config import database_path
 from sdi.export import export_csv
-from sdi.loaders import load
 from sdi.read_model import LineStatus, LineView, ReadModel
 from sdi.store import CORRECTABLE_FIELDS, Store
 
-VIEWS = (
-    "Review queue",
-    "Line detail",
-    "Conflicts",
-    "Price comparison",
-    "Source status",
-    "CSV export",
-)
+LINE_DETAIL = "Line detail"
 STATUS_ICONS = {"needs_review": "🟠", "auto_ok": "🟢", "reviewed": "✅"}
 
 
@@ -35,30 +27,36 @@ def main() -> None:
     if not db_path.is_file():
         st.error(f"No database at {db_path}; run `sdi ingest <folder>` first.")
         st.stop()
-    store = Store(db_path)  # brings a database from an earlier schema up to date
-    read_model = ReadModel(db_path)
+    store, read_model = _open(db_path)
+    if "line_id" in st.session_state:
+        # Streamlit forgets a widget's value while it isn't drawn; keep the open line across
+        # views.
+        st.session_state.line_id = st.session_state.line_id
 
+    views = {
+        "Review queue": lambda: review_queue(read_model),
+        LINE_DETAIL: lambda: line_detail(read_model, store),
+        "Conflicts": lambda: conflicts(read_model),
+        "Price comparison": lambda: price_comparison(read_model),
+        "Source status": lambda: source_status(read_model),
+        "CSV export": lambda: csv_export(read_model),
+    }
     with st.sidebar:
         st.title("Quotation review")
-        view = st.radio("View", VIEWS, key="view")
+        view = st.radio("View", views, key="view")
         st.text_input("Reviewer", key="reviewer", help="Recorded with every decision.")
         st.caption(f"Database: `{db_path}`")
 
     if message := st.session_state.pop("flash", None):
         st.success(message)
 
-    if view == "Review queue":
-        review_queue(read_model)
-    elif view == "Line detail":
-        line_detail(read_model, store)
-    elif view == "Conflicts":
-        conflicts(read_model)
-    elif view == "Price comparison":
-        price_comparison(read_model)
-    elif view == "Source status":
-        source_status(read_model)
-    else:
-        csv_export(read_model)
+    views[view]()
+
+
+@st.cache_resource
+def _open(db_path: Path) -> tuple[Store, ReadModel]:
+    # Store first: it brings a database from an earlier schema up to date, once per session.
+    return Store(db_path), ReadModel(db_path)
 
 
 def review_queue(read_model: ReadModel) -> None:
@@ -100,7 +98,7 @@ def review_queue(read_model: ReadModel) -> None:
 
 
 def line_detail(read_model: ReadModel, store: Store) -> None:
-    st.header("Line detail")
+    st.header(LINE_DETAIL)
     labels = {line.id: _line_label(line) for line in read_model.quotation_lines()}
     if not labels:
         st.info("No Quotation lines yet.")
@@ -124,7 +122,7 @@ def line_detail(read_model: ReadModel, store: Store) -> None:
     with values:
         original, calculated = st.columns(2)
         with original:
-            st.markdown("**Original values**")
+            st.markdown("**Stated values**, with corrections")
             st.table(
                 _pairs(
                     line,
@@ -167,8 +165,13 @@ def line_detail(read_model: ReadModel, store: Store) -> None:
     if image is not None and detail.source_image:
         with image:
             st.markdown("**Source as read by the model**")
-            for page in _source_images(detail.source_image):
-                st.image(page)
+            try:
+                pages = _source_images(read_model, detail.source_image)
+            except OSError as e:
+                st.info(f"Can't show {detail.source_image}: {e.strerror or e}")
+            else:
+                for page in pages:
+                    st.image(page)
 
     _review_actions(store, line)
 
@@ -221,10 +224,10 @@ def _review_actions(store: Store, line: LineView) -> None:
 
 def conflicts(read_model: ReadModel) -> None:
     st.header("Conflicts")
-    views = read_model.conflicts()
-    if not views:
+    conflict_views = read_model.conflicts()
+    if not conflict_views:
         st.info("No Conflicts: no two Sources of one Quotation disagree.")
-    for conflict in views:
+    for conflict in conflict_views:
         with st.container(border=True):
             st.subheader(f"{conflict.field} · {_product(conflict)}")
             st.caption(f"{conflict.supplier or 'Unknown supplier'} · quote {conflict.quote_ref}")
@@ -247,10 +250,10 @@ def price_comparison(read_model: ReadModel) -> None:
     st.caption(
         "USD per UOM is before discount, at the lowest-volume tier. Select a row to open it."
     )
-    views = read_model.price_comparisons()
-    if not views:
+    comparisons = read_model.price_comparisons()
+    if not comparisons:
         st.info("No Product is quoted in more than one Quotation.")
-    for comparison in views:
+    for comparison in comparisons:
         with st.container(border=True):
             st.subheader(_product(comparison))
             if comparison.incoterm_warning:
@@ -302,10 +305,10 @@ def csv_export(read_model: ReadModel) -> None:
     st.download_button("Download CSV", out.getvalue(), "quotation_lines.csv", "text/csv")
 
 
-def _lines_table(lines: list[LineView], key: str, row) -> None:
+def _lines_table(lines: list[LineView], key: str, to_row) -> None:
     """A table of lines, one row each; selecting a row opens it in Line detail."""
     st.dataframe(
-        [row(line) for line in lines],
+        [to_row(line) for line in lines],
         hide_index=True,
         key=key,
         on_select=lambda: _open_selected(key, lines),
@@ -322,13 +325,12 @@ def _open_selected(key: str, lines: list[LineView]) -> None:
 def _open_line(line_id: int) -> None:
     # Runs as a widget callback, before the next run draws the view radio and line selectbox.
     st.session_state.line_id = line_id
-    st.session_state.view = "Line detail"
+    st.session_state.view = LINE_DETAIL
 
 
-@st.cache_data
-def _source_images(source: str) -> list[bytes]:
-    """The Source as the pipeline gave it to the model: the image, or each rendered page."""
-    return load(Path(source)).images
+@st.cache_data(hash_funcs={ReadModel: lambda read_model: read_model.db_path})
+def _source_images(read_model: ReadModel, source: str) -> list[bytes]:
+    return read_model.source_images(source)
 
 
 def _parse(text: str, current: object) -> object:
@@ -340,7 +342,7 @@ def _parse(text: str, current: object) -> object:
     return text or None
 
 
-def _product(item) -> str:
+def _product(of) -> str:
     """INNs with strengths, and dosage form, of a line, Conflict or Price comparison."""
     ingredients = " + ".join(
         " ".join(
@@ -348,9 +350,9 @@ def _product(item) -> str:
             for part in (i["inn"], _text(i.get("strength_value")), i.get("strength_unit"))
             if part
         )
-        for i in item.active_ingredients
+        for i in of.active_ingredients
     )
-    return " · ".join(part for part in (ingredients, item.dosage_form) if part) or "Unknown product"
+    return " · ".join(part for part in (ingredients, of.dosage_form) if part) or "Unknown product"
 
 
 def _line_label(line: LineView) -> str:
@@ -368,7 +370,14 @@ def _status(status: str) -> str:
 
 
 def _pairs(line: LineView, fields: str) -> list[dict[str, str]]:
-    return [{"Field": f, "Value": _text(getattr(line, f))} for f in fields.split()]
+    """Each field's current value, and the extracted value of those a reviewer corrected."""
+    names = fields.split()
+    corrected = [f for f in names if f in line.extracted_values]
+    return [
+        {"Field": f, "Value": _text(getattr(line, f))}
+        | ({"Extracted": _text(line.extracted_values.get(f))} if corrected else {})
+        for f in names
+    ]
 
 
 def _options(values) -> list:
