@@ -19,7 +19,7 @@ from sdi.extraction.schema import SUPPORTED_DOCUMENT_TYPES, Quotation
 from sdi.fx import FxRate, FxSource
 from sdi.loaders import DocumentContent, NoLoaderError, file_type, load
 from sdi.read_model import ReadModel
-from sdi.reconcile import reconcile
+from sdi.reconcile import price_comparisons, reconcile
 from sdi.store import Store
 from sdi.validation import LineVerification, verify, wants_second_read
 
@@ -137,9 +137,10 @@ def ingest(
         if isinstance(result, Exception):
             store.save_failed(str(path), file_type(path), _error_message(result))
     # Reconciliation spans every stored Source, including those from earlier runs. It compares
-    # what the Sources say, so reviewers' corrections don't hide a Conflict.
+    # what the Sources say, so reviewers' corrections don't hide a Conflict; Price comparisons
+    # group on the same extracted values.
     lines = ReadModel(store.db_path).quotation_lines(corrected=False)
-    store.save_reconciliation(*reconcile(lines))
+    store.save_reconciliation(*reconcile(lines), price_comparisons(lines))
 
 
 def _fingerprint(path: Path, extraction_version: str) -> str:

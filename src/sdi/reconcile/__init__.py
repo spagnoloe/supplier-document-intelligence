@@ -1,8 +1,12 @@
-"""Reconciliation after the batch (ADR-0003): Conflicts between Sources of one Quotation.
+"""Reconciliation after the batch (ADR-0003): Conflicts between Sources of one Quotation,
+and Price comparisons across Quotations.
 
 Sources are linked only by normalized supplier + quote reference, and lines within a
 Quotation are matched only by Product. A field the matched lines state differently is a
 Conflict. Nothing is merged and no value wins: the lines go to review instead.
+
+Lines for one Product from different Quotations form a Price comparison. Their prices
+differing is a market, not an error, so a comparison never changes a review status.
 """
 
 import json
@@ -13,7 +17,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from sdi.read_model import LineView
-from sdi.store import ConflictRecord
+from sdi.store import ConflictRecord, PriceComparisonRecord
 from sdi.validation import ReasonCode, ReviewReason
 
 # Line fields Sources can disagree on. Ingredients, strengths and dosage form are not
@@ -37,6 +41,18 @@ _LEGAL_FORMS = frozenset(
         "ag", "bv", "co", "company", "corp", "corporation", "gmbh", "inc", "incorporated",
         "limited", "llc", "ltd", "ltda", "nv", "plc", "pte", "pty", "pvt", "sa", "sas",
         "sl", "spa", "srl",
+    }
+)  # fmt: skip
+
+# Salt, ester-counterion and hydrate words a model sometimes leaves on an INN that should
+# name the active moiety ("amoxicillin trihydrate", "tenofovir disoproxil fumarate").
+_SALT_WORDS = frozenset(
+    {
+        "acetate", "anhydrous", "besilate", "besylate", "bitartrate", "bromide", "calcium",
+        "chloride", "citrate", "dihydrate", "dihydrochloride", "fumarate", "hemihydrate",
+        "hydrate", "hydrobromide", "hydrochloride", "hyclate", "magnesium", "maleate",
+        "mesilate", "mesylate", "monohydrate", "phosphate", "potassium", "sodium",
+        "succinate", "sulfate", "sulphate", "tartrate", "trihydrate",
     }
 )  # fmt: skip
 
@@ -79,6 +95,54 @@ def reconcile(lines: Sequence[LineView]) -> tuple[list[ConflictRecord], Reasons]
                 )
             )
     return conflicts, reasons
+
+
+def price_comparisons(lines: Sequence[LineView]) -> list[PriceComparisonRecord]:
+    """Lines grouped by Product, for each Product quoted in more than one Quotation. Lines
+    are expected in Source and line order."""
+    by_product: dict[str, list[LineView]] = defaultdict(list)
+    for line in lines:
+        if _is_identified(line):
+            by_product[_product_key(line)].append(line)
+    return [
+        PriceComparisonRecord(
+            line_ids=[line.id for line in group], incoterm_warning=_incoterm_warning(group)
+        )
+        for group in by_product.values()
+        if len({_quotation_key(line) for line in group}) > 1
+    ]
+
+
+def _incoterm_warning(group: list[LineView]) -> str | None:
+    """Why the group's prices aren't like-for-like, when its Incoterms differ. A Quotation
+    stating none counts as differing: what its price includes is unknown."""
+    terms = {_words(line.incoterm) for line in group}
+    if len(terms) == 1 and "" not in terms:
+        return None
+    stated = dict.fromkeys(
+        f"{line.incoterm or 'no Incoterm'} from {line.supplier or Path(line.source).name}"
+        for line in group
+    )
+    return f"Prices are not like-for-like: {', '.join(stated)}"
+
+
+def _is_identified(line: LineView) -> bool:
+    """Every part of the Product key was read. Two lines missing the same part aren't
+    known to be the same Product, so they aren't compared."""
+    return (
+        bool(line.active_ingredients)
+        and all(
+            i.get("inn") and i.get("strength_value") is not None for i in line.active_ingredients
+        )
+        and bool(_words(line.dosage_form))
+    )
+
+
+def _quotation_key(line: LineView) -> tuple[str, str]:
+    """The Quotation a line belongs to. A Source that can't be linked (no supplier or
+    reference) is a Quotation of its own."""
+    supplier, ref = _supplier_key(line.supplier), _quote_ref_key(line.quote_ref)
+    return (supplier, ref) if supplier and ref else ("", line.source)
 
 
 def _matched(quotation_lines: list[LineView]) -> list[list[LineView]]:
@@ -156,10 +220,21 @@ def _conflict_message(conflict: ConflictRecord, lines: dict[int, LineView]) -> s
 
 def _product_key(line: LineView) -> str:
     ingredients = sorted(
-        f"{_words(i.get('inn'))} {i.get('strength_value')} {_words(i.get('strength_unit'), '')}"
+        f"{_moiety(i.get('inn'))} {i.get('strength_value')} {_words(i.get('strength_unit'), '')}"
         for i in line.active_ingredients
     )
     return " + ".join(ingredients) + " | " + _words(line.dosage_form)
+
+
+def _moiety(inn: str | None) -> str:
+    """The INN without trailing salt or hydrate words. A name made only of salt words
+    ("magnesium sulfate") is the product itself and stays whole, so it never folds into
+    another salt of the same cation."""
+    words = _words(inn).split()
+    moiety = list(words)
+    while moiety and moiety[-1] in _SALT_WORDS:
+        moiety.pop()
+    return " ".join(moiety or words)
 
 
 def _supplier_key(supplier: str | None) -> str:
