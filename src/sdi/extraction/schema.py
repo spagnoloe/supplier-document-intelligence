@@ -72,16 +72,15 @@ class ActiveIngredient(BaseModel):
     )
     inn: str = Field(
         description="WHO International Nonproprietary Name of the active moiety, lower case, "
-        "with salts, esters and hydrates removed (e.g. 'metformin', not 'metformin "
-        "hydrochloride')."
+        "with salts, esters and hydrates removed (e.g. 'doxycycline', not 'doxycycline "
+        "hyclate')."
     )
     strength_value: float | None = Field(
         default=None, description="Numeric amount of this ingredient per unit or per volume."
     )
     strength_unit: str | None = Field(
         default=None,
-        description="Unit of the strength, e.g. 'mg', 'g', 'mcg', 'IU', 'mg/5 mL', 'mg/mL', "
-        "'mcg/actuation'.",
+        description="Unit of the strength, e.g. 'mg', 'g', 'mcg', 'IU', 'mg/5 mL', 'mg/g'.",
     )
 
 
