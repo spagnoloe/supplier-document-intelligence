@@ -176,3 +176,46 @@ def test_differing_lines_of_different_quotations_are_not_conflicts(write_source,
     ingest([a, b, c], FakeExtractor(quotations), InMemoryFxSource(), store)
 
     assert read_model.conflicts() == []
+
+
+def test_source_without_quote_reference_is_flagged_and_never_linked(
+    write_source, store, read_model
+):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5)),
+        "b.json": quotation(amoxicillin(15.2), quote_ref=None),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
+    lines = {line.source: line for line in read_model.quotation_lines()}
+    unlinked = lines[str(b)]
+    assert [r.code for r in unlinked.review_reasons] == ["NO_QUOTE_REFERENCE"]
+    # A missing reference is a reason to look, not on its own a reason to review.
+    assert unlinked.review_status == "auto_ok"
+    assert lines[str(a)].review_reasons == []
+    assert read_model.review_queue(reason_code="NO_QUOTE_REFERENCE") == [unlinked]
+
+
+def test_rerun_after_a_source_is_corrected_clears_its_conflict(write_source, store, read_model):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    ingest(
+        [a, b],
+        FakeExtractor(
+            {"a.json": quotation(amoxicillin(12.5)), "b.json": quotation(amoxicillin(15.2))}
+        ),
+        InMemoryFxSource(),
+        store,
+    )
+    assert len(read_model.conflicts()) == 1
+
+    # Only b is re-ingested; a's line must lose the flag b's old value put on it.
+    ingest([b], FakeExtractor({"b.json": quotation(amoxicillin(12.5))}), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
+    assert {
+        (line.review_status, tuple(line.review_reasons)) for line in read_model.quotation_lines()
+    } == {("auto_ok", ())}
