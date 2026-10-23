@@ -88,7 +88,7 @@ _Avoid_: Citation, quote
 
 **Second read**:
 A re-extraction of a Source by a stronger model, compared field by field with the first read. It runs for image Sources and for Sources with a line whose critical checks failed.
-_Avoid_: Re-extraction, double-check, verification pass
+_Avoid_: Double-check, re-run, verification pass
 
 **Review reason**:
 A plain-language statement of why a Quotation line needs a human to look at it.

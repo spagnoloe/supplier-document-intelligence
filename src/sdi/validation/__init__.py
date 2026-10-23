@@ -80,7 +80,7 @@ _NON_MONEY_CODES = frozenset(
 )
 
 # Fields two reads of one Source should give alike. Not the dosage form: it is a standardized
-# term the model chooses ("Syrup" or "Oral syrup"), not a value it reads off the page.
+# term the model chooses, more or less specific, not a value it reads off the page.
 _SECOND_READ_FIELDS = tuple(f for f in get_args(LineField) if f != "dosage_form")
 
 # Relative tolerance for a float value against the number written in its evidence.
