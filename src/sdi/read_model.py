@@ -235,6 +235,13 @@ class ReadModel:
             line=view, fields=fields, source_image=view.source if row["read_as_images"] else None
         )
 
+    def source_images(self, source: str) -> list[bytes]:
+        """The Source as the pipeline gave it to the model: the image, or each rendered page
+        of a scanned PDF. Read from the file, which raises OSError once it has moved."""
+        from sdi.loaders import load  # pdf and image libraries, needed only here
+
+        return load(Path(source)).images
+
     def conflicts(self) -> list[ConflictView]:
         with connect(self.db_path) as conn:
             rows = conn.execute(
