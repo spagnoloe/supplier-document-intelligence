@@ -47,12 +47,16 @@ def run_ingest(folder: Path) -> None:
 
 
 def format_summary(statuses: list[DocumentStatus]) -> str:
-    rows = [("STATUS", "LINES", "SOURCE", "DETAIL")]
+    # REVIEW counts lines with review status needs_review; the rest are auto_ok.
+    rows = [("STATUS", "LINES", "REVIEW", "SOURCE", "DETAIL")]
     for s in statuses:
         detail = (s.error if s.status == "failed" else s.document_type) or ""
-        rows.append((s.status, str(s.line_count), Path(s.source).name, detail))
-    widths = [max(len(row[i]) for row in rows) for i in range(3)]
+        rows.append(
+            (s.status, str(s.line_count), str(s.needs_review_count), Path(s.source).name, detail)
+        )
+    # Every column but the free-text DETAIL is padded to its widest cell.
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]) - 1)]
     return "\n".join(
-        "  ".join(cell.ljust(w) for cell, w in zip(row[:3], widths, strict=True)) + "  " + row[3]
+        "  ".join(cell.ljust(w) for cell, w in zip(row[:-1], widths, strict=True)) + "  " + row[-1]
         for row in rows
     )

@@ -5,6 +5,7 @@ import json
 import pytest
 from conftest import FakeExtractor, InMemoryFxSource
 
+from sdi.cli import format_summary
 from sdi.extraction.schema import (
     ActiveIngredient,
     LineFieldEvidence,
@@ -65,10 +66,12 @@ def make_line(spans: dict[str, str | None] | None = None, **overrides) -> Quotat
     return QuotationLine(**{**values, **overrides})
 
 
-def make_quotation(*lines: QuotationLine, currency: str | None = "USD") -> Quotation:
+def make_quotation(
+    *lines: QuotationLine, currency: str | None = "USD", supplier: str = "Synthetic Pharma Ltd"
+) -> Quotation:
     return Quotation(
         document_type="quotation",
-        supplier="Synthetic Pharma Ltd",
+        supplier=supplier,
         quote_ref="Q-1",
         currency=currency,
         lines=list(lines),
@@ -264,7 +267,7 @@ def test_missing_currency_forces_review(write_source, store, read_model):
 
 def test_tier_prices_alone_satisfy_the_price_requirement(write_source, store, read_model):
     text = SOURCE.replace('"box_price": "1,250.00"', '"from 1 to 50 boxes": "1,250.00"')
-    spans = {**LINE_EVIDENCE, "price_tiers": "from 1 to 50 boxes\": \"1,250.00"}
+    spans = {**LINE_EVIDENCE, "price_tiers": 'from 1 to 50 boxes": "1,250.00'}
     del spans["pack_price"]
     tiers = [PriceTier(min_qty=1, max_qty=50, pack_price=1250.0)]
     ingest_one(
@@ -323,3 +326,54 @@ def test_unclear_critical_value_fails_and_forces_review(write_source, store, rea
         "needs_review",
         {("UNCLEAR_VALUE", "pack_price")},
     )
+
+
+def test_review_queue_lists_needs_review_first_and_filters(write_source, store, read_model):
+    clean, flagged = write_source("a.json", SOURCE), write_source("b.json", SOURCE)
+    wrong_price = make_line({**LINE_EVIDENCE, "pack_price": "1,350.00"})
+    extractor = FakeExtractor(
+        {
+            "a.json": make_quotation(make_line(), make_line(), supplier="Alpha Ltd"),
+            "b.json": make_quotation(make_line(), wrong_price, supplier="Beta Ltd"),
+        }
+    )
+    ingest([clean, flagged], extractor, InMemoryFxSource(), store)
+
+    queue = read_model.review_queue()
+    assert [(q.review_status, q.supplier, q.line_no) for q in queue] == [
+        ("needs_review", "Beta Ltd", 2),
+        ("auto_ok", "Alpha Ltd", 1),
+        ("auto_ok", "Alpha Ltd", 2),
+        ("auto_ok", "Beta Ltd", 1),
+    ]
+
+    def keys(lines):
+        return [(q.supplier, q.line_no) for q in lines]
+
+    assert keys(read_model.review_queue(supplier="Beta Ltd")) == [("Beta Ltd", 2), ("Beta Ltd", 1)]
+    assert keys(read_model.review_queue(source=str(clean))) == [("Alpha Ltd", 1), ("Alpha Ltd", 2)]
+    assert keys(read_model.review_queue(review_status="needs_review")) == [("Beta Ltd", 2)]
+    assert keys(read_model.review_queue(reason_code="EVIDENCE_NOT_FOUND")) == [("Beta Ltd", 2)]
+    assert read_model.review_queue(supplier="Alpha Ltd", review_status="needs_review") == []
+
+
+def test_line_detail_attaches_reasons_to_their_field(write_source, store, read_model):
+    line = make_line({**LINE_EVIDENCE, "pack_price": "1,350.00"}, revision_note="Price revised")
+    ingest_one(write_source, store, make_quotation(line))
+
+    [line] = read_model.review_queue()
+    detail = read_model.line_detail(line.id)
+    pack_price = next(f for f in detail.fields if f.field == "pack_price")
+    assert [r.code for r in pack_price.reasons] == ["EVIDENCE_NOT_FOUND"]
+    assert {r.code for r in detail.line.review_reasons} == {"EVIDENCE_NOT_FOUND", "REVISION"}
+    currency = next(f for f in detail.fields if f.field == "currency")
+    assert (currency.value, [e.span for e in currency.evidence]) == ("USD", ["USD"])
+
+
+def test_cli_summary_shows_lines_needing_review_per_source(write_source, store, read_model):
+    wrong_price = make_line({**LINE_EVIDENCE, "pack_price": "1,350.00"})
+    ingest_one(write_source, store, make_quotation(make_line(), wrong_price, make_line()))
+
+    header, row = format_summary(read_model.document_statuses()).splitlines()
+    assert header.split()[:4] == ["STATUS", "LINES", "REVIEW", "SOURCE"]
+    assert row.split()[:4] == ["processed", "3", "1", "offer.json"]
