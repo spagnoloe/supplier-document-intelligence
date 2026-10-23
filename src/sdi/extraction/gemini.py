@@ -9,7 +9,6 @@ import threading
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import ValidationError
 
 from sdi.extraction.prompt import EXTRACTION_PROMPT
 from sdi.extraction.schema import Quotation
@@ -18,28 +17,25 @@ from sdi.loaders import DocumentContent
 
 class GeminiExtractor:
     def __init__(self, model: str):
-        self._structured = ChatGoogleGenerativeAI(model=model).with_structured_output(Quotation)
-        # The LLM cache stores a response before it is parsed, so a cached malformed response
-        # would be replayed on every retry. Retries for a Source that already failed bypass it.
-        self._structured_uncached = ChatGoogleGenerativeAI(
-            model=model, cache=False
-        ).with_structured_output(Quotation)
-        self._failed: set[str] = set()
+        self._model = model
+        self._attempts: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def __call__(self, content: DocumentContent) -> Quotation:
+        # The LLM cache stores a response before it is parsed, so a retry with the same
+        # request would replay the same malformed answer. Each retry of a Source uses its
+        # own seed instead: a fresh sample, still cached, so a re-run replays the same
+        # sequence of attempts without new calls.
         with self._lock:
-            retrying = content.source_path in self._failed
-        model = self._structured_uncached if retrying else self._structured
-        try:
-            result = model.invoke([SystemMessage(EXTRACTION_PROMPT), _document_message(content)])
-            if not isinstance(result, Quotation):
-                raise OutputParserException("model returned no structured output")
-            return result
-        except (OutputParserException, ValidationError):
-            with self._lock:
-                self._failed.add(content.source_path)
-            raise
+            attempt = self._attempts.get(content.source_path, 0)
+            self._attempts[content.source_path] = attempt + 1
+        llm = ChatGoogleGenerativeAI(model=self._model, seed=attempt or None)
+        result = llm.with_structured_output(Quotation).invoke(
+            [SystemMessage(EXTRACTION_PROMPT), _document_message(content)]
+        )
+        if not isinstance(result, Quotation):
+            raise OutputParserException("model returned no structured output")
+        return result
 
 
 def _document_message(content: DocumentContent) -> HumanMessage:
