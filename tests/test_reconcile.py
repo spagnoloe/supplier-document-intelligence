@@ -219,3 +219,24 @@ def test_rerun_after_a_source_is_corrected_clears_its_conflict(write_source, sto
     assert {
         (line.review_status, tuple(line.review_reasons)) for line in read_model.quotation_lines()
     } == {("auto_ok", ())}
+
+
+def test_product_quoted_twice_matches_by_order_not_across_pack_sizes(
+    write_source, store, read_model
+):
+    text = SOURCE.replace("Box of 100", "Box of 100 / Box of 1000").replace(
+        "12.50", "12.50 / 110.00"
+    )
+    box_of_1000 = {
+        "pack_size": 1000,
+        "pack_price": 110.0,
+        "evidence": [
+            LineFieldEvidence(field=f, span=s, certainty="stated")
+            for f, s in {"pack_size": "Box of 1000", "pack_price": "110.00"}.items()
+        ],
+    }
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    same = quotation(amoxicillin(), amoxicillin(**box_of_1000))
+    ingest([a, b], FakeExtractor({"a.json": same, "b.json": same}), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
