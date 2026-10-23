@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS documents (
     error TEXT,
     -- 1 when the model read the Source as images (a photo or a scanned PDF).
     read_as_images INTEGER NOT NULL DEFAULT 0 CHECK (read_as_images IN (0, 1)),
+    -- The Source's content and the extraction setup it was read with; a re-run skips a
+    -- Source whose fingerprint is unchanged.
+    fingerprint TEXT,
     processed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS quotations (
@@ -171,6 +174,7 @@ class Store:
         verifications: list[LineVerification],
         *,
         read_as_images: bool = False,
+        fingerprint: str | None = None,
     ) -> None:
         with connect(self.db_path) as conn:
             doc_id = self._replace_document(
@@ -180,6 +184,7 @@ class Store:
                 "processed",
                 quotation.document_type,
                 read_as_images=read_as_images,
+                fingerprint=fingerprint,
             )
             terms = quotation.model_dump(mode="json", exclude={"document_type", "lines"})
             quotation_id = _insert(conn, "quotations", {"document_id": doc_id, **terms})
@@ -276,11 +281,32 @@ class Store:
                 (currency, on.isoformat(), rate.rate, rate.rate_date.isoformat(), rate.source),
             )
 
-    def save_skipped(self, source_path: str, file_type: str | None, document_type: str) -> None:
+    def save_skipped(
+        self,
+        source_path: str,
+        file_type: str | None,
+        document_type: str,
+        *,
+        fingerprint: str | None = None,
+    ) -> None:
         with connect(self.db_path) as conn:
             self._replace_document(
-                conn, source_path, file_type, "skipped_unsupported_type", document_type
+                conn,
+                source_path,
+                file_type,
+                "skipped_unsupported_type",
+                document_type,
+                fingerprint=fingerprint,
             )
+
+    def fingerprint(self, source_path: str) -> str | None:
+        """The fingerprint the Source was last read with; None if it failed or is new."""
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT fingerprint FROM documents WHERE source_path = ? AND status != 'failed'",
+                (source_path,),
+            ).fetchone()
+        return None if row is None else row[0]
 
     def save_failed(self, source_path: str, file_type: str | None, error: str) -> None:
         with connect(self.db_path) as conn:
@@ -296,6 +322,7 @@ class Store:
         error: str | None = None,
         *,
         read_as_images: bool = False,
+        fingerprint: str | None = None,
     ) -> int:
         conn.execute("DELETE FROM documents WHERE source_path = ?", (source_path,))
         return _insert(
@@ -308,6 +335,7 @@ class Store:
                 "document_type": document_type,
                 "error": error,
                 "read_as_images": int(read_as_images),
+                "fingerprint": fingerprint,
             },
         )
 

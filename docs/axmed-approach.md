@@ -53,6 +53,8 @@ An unknown file extension fails loudly ("no loader for .xyz").
 
 Steps 1–4 are a LangGraph graph per Source, run with `graph.batch()` and a concurrency limit. Step 5 is a plain function, since it isn't a per-document flow.
 
+**Re-runs skip unchanged Sources.** Each stored Source keeps a fingerprint of its content and of the extraction setup it was read with: the models, the prompt and the schema. A re-run reads only Sources whose fingerprint changed, plus those that failed; `--force` reads every Source again, e.g. after a change to validation. Reconciliation still runs over every stored Source. A supplier document doesn't change once received (a revised quote is a new file), so outside development a Source is read again only when the pipeline changes.
+
 ---
 
 ## 3. DocumentContent: the loader output

@@ -289,3 +289,47 @@ def test_image_file_reaches_extractor_as_that_image(write_source, store, read_mo
     assert (received.text, received.images) == (None, [image])
     [status] = read_model.document_statuses()
     assert (status.status, status.line_count) == ("processed", 1)
+
+
+def test_re_ingesting_an_unchanged_source_skips_it(write_source, store, read_model):
+    source = write_source("offer.json", "{}")
+    extractor = FakeExtractor({"offer.json": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store, extraction_version="v1")
+    [before] = read_model.quotation_lines()
+    ingest([source], extractor, InMemoryFxSource(), store, extraction_version="v1")
+
+    assert extractor.calls_for("offer.json") == 1
+    assert [line.id for line in read_model.quotation_lines()] == [before.id]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        pytest.param(lambda source: (source.write_text('{"v": 2}'), "v1"), id="content"),
+        pytest.param(lambda source: (None, "v2"), id="extraction_version"),
+    ],
+)
+def test_re_ingesting_after_a_change_extracts_again(write_source, store, change):
+    source = write_source("offer.json", "{}")
+    extractor = FakeExtractor({"offer.json": make_quotation("Alpha")})
+    ingest([source], extractor, InMemoryFxSource(), store, extraction_version="v1")
+
+    _, version = change(source)
+    ingest([source], extractor, InMemoryFxSource(), store, extraction_version=version)
+
+    assert extractor.calls_for("offer.json") == 2
+
+
+def test_forced_or_failed_sources_are_extracted_again(write_source, store):
+    good, bad = write_source("good.json", "{}"), write_source("bad.json", "{}")
+    extractor = FakeExtractor(
+        {"good.json": make_quotation("Alpha"), "bad.json": RuntimeError("model unavailable")}
+    )
+    ingest([good, bad], extractor, InMemoryFxSource(), store)
+
+    ingest([good, bad], extractor, InMemoryFxSource(), store)
+    assert (extractor.calls_for("good.json"), extractor.calls_for("bad.json")) == (1, 2)
+
+    ingest([good, bad], extractor, InMemoryFxSource(), store, force=True)
+    assert (extractor.calls_for("good.json"), extractor.calls_for("bad.json")) == (2, 3)

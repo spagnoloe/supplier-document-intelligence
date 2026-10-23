@@ -2,9 +2,15 @@
 `sdi export <file.csv>`: write every Quotation line, with corrections applied, as CSV."""
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sdi.read_model import DocumentStatus, ReadModel
+
+if TYPE_CHECKING:
+    from sdi.config import Settings
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -12,6 +18,12 @@ def main(argv: list[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     ingest_cmd = commands.add_parser("ingest", help="Ingest every Source in a folder.")
     ingest_cmd.add_argument("folder", type=Path)
+    ingest_cmd.add_argument(
+        "--force",
+        action="store_true",
+        help="Read every Source again, even if neither it nor the models or prompt changed "
+        "(e.g. after a change to validation).",
+    )
     export_cmd = commands.add_parser(
         "export", help="Write every Quotation line, with corrections applied, as CSV."
     )
@@ -19,12 +31,12 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
-        run_ingest(args.folder)
+        run_ingest(args.folder, force=args.force)
     elif args.command == "export":
         run_export(args.file)
 
 
-def run_ingest(folder: Path) -> None:
+def run_ingest(folder: Path, *, force: bool = False) -> None:
     # Imported here so `sdi --help` stays fast and works without an API key.
     from langchain_community.cache import SQLiteCache
     from langchain_core.globals import set_llm_cache
@@ -49,10 +61,27 @@ def run_ingest(folder: Path) -> None:
         store=Store(settings.db_path),
         second_reader=GeminiExtractor(settings.second_read_model),
         max_concurrency=settings.max_concurrency,
+        extraction_version=extraction_version(settings),
+        force=force,
     )
     ingested = {str(p) for p in sources}
     statuses = ReadModel(settings.db_path).document_statuses()
     print(format_summary([s for s in statuses if s.source in ingested]))
+
+
+def extraction_version(settings: "Settings") -> str:
+    """What a Source's extraction depends on besides its content: the models, the prompt and
+    the schema the model fills."""
+    from sdi.extraction.prompt import EXTRACTION_PROMPT
+    from sdi.extraction.schema import Quotation
+
+    parts = [
+        settings.extraction_model,
+        settings.second_read_model,
+        EXTRACTION_PROMPT,
+        json.dumps(Quotation.model_json_schema(), sort_keys=True),
+    ]
+    return hashlib.sha256("\0".join(parts).encode()).hexdigest()
 
 
 def run_export(file: Path) -> None:

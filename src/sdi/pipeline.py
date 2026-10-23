@@ -4,6 +4,7 @@ load → extract → validate → [second read] → store. The second read is a 
 it runs for image Sources and for Sources with a line whose critical checks failed.
 """
 
+import hashlib
 from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
@@ -30,6 +31,7 @@ STRUCTURED_OUTPUT_ERRORS = (OutputParserException, ValidationError)
 
 class SourceState(TypedDict, total=False):
     source_path: str
+    fingerprint: str
     content: DocumentContent
     quotation: Quotation
     verifications: list[LineVerification]
@@ -75,9 +77,15 @@ def build_graph(
                 quotation,
                 state["verifications"],
                 read_as_images=bool(state["content"].images),
+                fingerprint=state["fingerprint"],
             )
         else:
-            store.save_skipped(path, file_type(Path(path)), quotation.document_type)
+            store.save_skipped(
+                path,
+                file_type(Path(path)),
+                quotation.document_type,
+                fingerprint=state["fingerprint"],
+            )
         return {}
 
     graph = StateGraph(SourceState)
@@ -110,20 +118,37 @@ def ingest(
     second_reader: Extractor | None = None,
     max_concurrency: int = 2,
     max_attempts: int = 3,
+    extraction_version: str = "",
+    force: bool = False,
 ) -> None:
+    """Read each Source unless it is unchanged since it was last read with the same
+    `extraction_version` (the models and prompt); `force` reads every Source again."""
     graph = build_graph(extractor, second_reader, fx_source, store, max_attempts)
-    inputs = [{"source_path": str(path)} for path in sources]
+    fingerprints = {path: _fingerprint(path, extraction_version) for path in sources}
+    changed = [
+        path for path in sources if force or store.fingerprint(str(path)) != fingerprints[path]
+    ]
+    inputs = [{"source_path": str(path), "fingerprint": fingerprints[path]} for path in changed]
     results = graph.batch(
         inputs, config={"max_concurrency": max_concurrency}, return_exceptions=True
     )
     # A failure anywhere in one Source's graph is recorded against that Source only.
-    for path, result in zip(sources, results, strict=True):
+    for path, result in zip(changed, results, strict=True):
         if isinstance(result, Exception):
             store.save_failed(str(path), file_type(path), _error_message(result))
     # Reconciliation spans every stored Source, including those from earlier runs. It compares
     # what the Sources say, so reviewers' corrections don't hide a Conflict.
     lines = ReadModel(store.db_path).quotation_lines(corrected=False)
     store.save_reconciliation(*reconcile(lines))
+
+
+def _fingerprint(path: Path, extraction_version: str) -> str:
+    digest = hashlib.sha256(extraction_version.encode())
+    try:
+        digest.update(path.read_bytes())
+    except OSError:  # recorded as failed when its graph tries to load it
+        pass
+    return digest.hexdigest()
 
 
 def _second_read(

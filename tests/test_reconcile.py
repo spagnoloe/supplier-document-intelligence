@@ -212,8 +212,15 @@ def test_rerun_after_a_source_is_corrected_clears_its_conflict(write_source, sto
     )
     assert len(read_model.conflicts()) == 1
 
-    # Only b is re-ingested; a's line must lose the flag b's old value put on it.
-    ingest([b], FakeExtractor({"b.json": quotation(amoxicillin(12.5))}), InMemoryFxSource(), store)
+    # Only b is re-ingested, read correctly by a new extraction setup; a's line must lose the
+    # flag b's old value put on it.
+    ingest(
+        [b],
+        FakeExtractor({"b.json": quotation(amoxicillin(12.5))}),
+        InMemoryFxSource(),
+        store,
+        extraction_version="fixed",
+    )
 
     assert read_model.conflicts() == []
     assert {
