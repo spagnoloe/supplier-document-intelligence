@@ -168,17 +168,17 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 
 ## 6. Validation, normalization and review (ADR-0004)
 
-**Derived values** are stored next to the originals:
-- the missing unit or pack price;
-- the net-of-discount price;
-- tier 1 as the headline price;
-- USD per UOM.
+**Derived values** are stored next to the originals, never in their place:
+- the headline Unit and Pack price: as stated on the line, else in the lowest-volume tier (smallest `min_qty`, not the first listed; reason `TIERED_PRICING`), with the missing one calculated from the other and the Pack size. A Pack size the rules reject calculates nothing;
+- the net-of-discount headline prices, empty when no discount is stated;
+- USD per UOM: the headline Unit price before discount.
 
 **FX:**
 - Rates come from Frankfurter (free, ECB reference rates), on the **quotation issue date**.
 - Fetched rates are cached in a SQLite `fx_rates` table.
-- Rate, rate date and source are stored with each conversion.
-- If the API is unavailable, the USD price is null with reason `FX_UNAVAILABLE`.
+- Rate, rate date and source are stored with each conversion. The rate date can precede the issue date: for a weekend or holiday the ECB's last published rate is used.
+- With no rate (API down, currency outside the ECB set, no issue date), the USD price is null with reason `FX_UNAVAILABLE`, never estimated. Missing rates aren't cached, so a re-run retries.
+- A USD price is stored with rate 1 and no rate date or source.
 
 **Per-field verification:**
 
@@ -190,9 +190,9 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 
 **Checks:**
 - **Evidence check** (text sources). Span and text are compared after normalizing whitespace, quote marks, case and number formatting (`1,250.00` = `1250` = `1.250,00`); numbers are matched whole, so `25` never matches inside `1250`. A real span can still back a wrong number, so a numeric value must also be written in its own span. Numbers inside list entries (strengths, tier rows) need only be written somewhere in the Source: the model gives one span per field, which rarely covers every entry. That still catches computed values, e.g. tier quantities converted from packs to units.
-- **Arithmetic checks**, within tolerance:
-  - unit × pack_size ≈ pack_price
-  - qty × unit × (1 − discount) ≈ line_total
+- **Arithmetic checks**, within 1% relative tolerance: enough for a Unit price rounded to the cent (12.50 / 30 written as 0.42 is 0.8% off), too little for a price on the wrong quantity. A pass verifies every field involved; a mismatch fails them all with `ARITHMETIC_MISMATCH`, since arithmetic shows that a value is wrong, not which.
+  - unit × pack_size ≈ pack_price, when all three are stated.
+  - qty × price × (1 − discount) ≈ line_total. Documents count the quantity in UOMs or in Packs without saying which, so either price, stated or calculated, may produce the total. Tier-only lines are skipped: the tier that applies depends on the quantity.
 - **Rule checks.** ISO 4217 currency (`INVALID_CURRENCY`), price > 0 (`NON_POSITIVE_PRICE`), critical field present (`MISSING_CRITICAL_FIELD`), and plausible magnitude (`IMPLAUSIBLE_VALUE`: pack size a positive whole number, discount within 0–100%, positive quantity, line total and strength).
 - **Second-read agreement** (images and failed lines).
 
