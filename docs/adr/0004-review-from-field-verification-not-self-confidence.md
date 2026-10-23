@@ -5,4 +5,5 @@ Each extracted field is marked verified, unverified or failed by independent che
 ## Consequences
 
 - The eval measures flagging quality (share of wrong fields that were flagged) alongside review load (% lines `needs_review`, % fields flagged, flags on correct fields), so the policy can't win by flagging everything.
-- Both image reads come from the same provider (see ADR-0005), so their errors are less independent than cross-family reads would be.
+- Both image reads come from the same provider (see ADR-0005), so their errors are less independent than cross-family reads would be. On the sample, both reads gave one scanned unit price the same wrong value; only the line-total check caught it.
+- Critical fields on an image line need arithmetic or second-read agreement to verify. A line with no line total and no second read always goes to review.
