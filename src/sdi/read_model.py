@@ -30,6 +30,8 @@ class LineView(DerivedPrices):
     source: str
     supplier: str | None
     quote_ref: str | None
+    incoterm: str | None
+    incoterm_place: str | None
     line_no: int
     brand_name: str | None
     inns: list[str]
@@ -86,8 +88,21 @@ class ConflictView(BaseModel):
     values: list[ConflictValue]
 
 
+class PriceComparisonView(BaseModel):
+    """Lines for one Product from different Quotations. Each line's `usd_per_uom` is the
+    normalized price: USD per UOM, before discount, at the lowest-volume tier."""
+
+    id: int
+    inns: list[str]
+    active_ingredients: list[dict]
+    dosage_form: str | None
+    incoterm_warning: str | None
+    lines: list[LineView]
+
+
 _LINES_QUERY = """
-    SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, l.line_no,
+    SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, q.incoterm,
+           q.incoterm_place, l.line_no,
            l.brand_name, l.active_ingredients, l.dosage_form, l.uom,
            l.pack_size, l.unit_price, l.pack_price,
            COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
@@ -216,6 +231,33 @@ class ReadModel:
                     value=json.loads(r["value"]),
                 )
             )
+        return list(views.values())
+
+    def price_comparisons(self) -> list[PriceComparisonView]:
+        with connect(self.db_path) as conn:
+            rows = conn.execute(
+                """SELECT c.id, c.incoterm_warning, p.line_id
+                   FROM price_comparisons c
+                   JOIN price_comparison_lines p ON p.comparison_id = c.id
+                   ORDER BY c.id, p.id"""
+            ).fetchall()
+        lines = {
+            view.id: view
+            for view, _ in self._lines("WHERE l.id IN (SELECT line_id FROM price_comparison_lines)")
+        }
+        views: dict[int, PriceComparisonView] = {}
+        for r in rows:
+            line = lines[r["line_id"]]
+            if r["id"] not in views:
+                views[r["id"]] = PriceComparisonView(
+                    id=r["id"],
+                    inns=line.inns,
+                    active_ingredients=line.active_ingredients,
+                    dosage_form=line.dosage_form,
+                    incoterm_warning=r["incoterm_warning"],
+                    lines=[],
+                )
+            views[r["id"]].lines.append(line)
         return list(views.values())
 
     def _lines(self, clause: str, params: dict | None = None) -> list[tuple[LineView, dict]]:

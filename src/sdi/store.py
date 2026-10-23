@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS conflict_values (
     line_id INTEGER NOT NULL REFERENCES quotation_lines(id) ON DELETE CASCADE,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS price_comparisons (
+    id INTEGER PRIMARY KEY,
+    -- Set when the lines' Incoterms differ, so their prices aren't like-for-like.
+    incoterm_warning TEXT
+);
+CREATE TABLE IF NOT EXISTS price_comparison_lines (
+    id INTEGER PRIMARY KEY,
+    comparison_id INTEGER NOT NULL REFERENCES price_comparisons(id) ON DELETE CASCADE,
+    line_id INTEGER NOT NULL REFERENCES quotation_lines(id) ON DELETE CASCADE
+);
 """
 
 
@@ -115,6 +125,13 @@ class ConflictRecord(BaseModel):
     quote_ref: str | None
     field: str
     values: dict[int, object]  # line id → that line's value
+
+
+class PriceComparisonRecord(BaseModel):
+    """Lines for one Product from different Quotations, to be set side by side."""
+
+    line_ids: list[int]
+    incoterm_warning: str | None
 
 
 # SQL value for a column added since a database was created, for the rows it already holds.
@@ -184,12 +201,16 @@ class Store:
                     _insert_reason(conn, line_id, "verification", reason)
 
     def save_reconciliation(
-        self, conflicts: list[ConflictRecord], reasons: list[tuple[int, ReviewReason]]
+        self,
+        conflicts: list[ConflictRecord],
+        reasons: list[tuple[int, ReviewReason]],
+        comparisons: list[PriceComparisonRecord],
     ) -> None:
         """Replace every earlier reconciliation outcome, so a re-ingested Source never leaves
-        stale Conflicts or flags on the lines it was compared with."""
+        stale Conflicts, Price comparisons or flags on the lines it was compared with."""
         with connect(self.db_path) as conn:
             conn.execute("DELETE FROM conflicts")
+            conn.execute("DELETE FROM price_comparisons")
             conn.execute("DELETE FROM review_reasons WHERE origin = 'reconciliation'")
             conn.execute("UPDATE quotation_lines SET review_status = verification_status")
             for conflict in conflicts:
@@ -203,6 +224,16 @@ class Store:
                             "line_id": line_id,
                             "value": json.dumps(value),
                         },
+                    )
+            for comparison in comparisons:
+                comparison_id = _insert(
+                    conn, "price_comparisons", comparison.model_dump(exclude={"line_ids"})
+                )
+                for line_id in comparison.line_ids:
+                    _insert(
+                        conn,
+                        "price_comparison_lines",
+                        {"comparison_id": comparison_id, "line_id": line_id},
                     )
             for line_id, reason in reasons:
                 _insert_reason(conn, line_id, "reconciliation", reason)
