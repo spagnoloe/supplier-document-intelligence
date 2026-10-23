@@ -106,6 +106,12 @@ class PriceTier(BaseModel):
     pack_price: float | None
 
 
+class FieldEvidence(BaseModel):
+    field: Literal[...]  # an enum of the model's own field names
+    span: str | None  # verbatim source span
+    certainty: Literal["stated", "inferred", "unclear"]
+
+
 class QuotationLine(BaseModel):
     brand_name: str | None
     active_ingredients: list[ActiveIngredient]
@@ -120,8 +126,7 @@ class QuotationLine(BaseModel):
     line_total: float | None
     price_tiers: list[PriceTier]
     revision_note: str | None  # e.g. "corrected from 0.128 to 0.134 in P.S."
-    evidence: dict[str, str]  # field → verbatim source span
-    certainty: dict[str, Literal["stated", "inferred", "unclear"]]
+    evidence: list[LineFieldEvidence]  # {field, span, certainty} per non-null field
 
 
 class Quotation(BaseModel):
@@ -135,7 +140,10 @@ class Quotation(BaseModel):
     incoterm: str | None
     incoterm_place: str | None
     lines: list[QuotationLine]
+    evidence: list[QuotationFieldEvidence]  # same shape, for the terms above
 ```
+
+Evidence and certainty were first sketched as `dict[field, ...]` maps. They are a list of `{field, span, certainty}` entries instead: Gemini's structured output can't reliably express open-ended dict keys, and an enum of field names stops the model inventing fields. Quotation-level terms carry evidence too, so the currency or supplier can be checked like line values.
 
 | Change vs the brief's schema | Why the original falls short |
 |---|---|
@@ -292,10 +300,13 @@ Costs to record for the write-up: state-typing boilerplate, overkill for a mostl
 ```
 src/sdi/
   loaders/        registry + pdf, json, email, image (later: excel)
-  extraction/     schema.py, prompt, graph.py
+  extraction/     schema.py, prompt.py, gemini.py (the extractor)
   validation/     checks + review reasons
   reconcile/      conflicts + price comparison
-  fx.py  store.py  cli.py
+  pipeline.py     LangGraph graph per Source + ingest()
+  store.py        SQLite writes
+  read_model.py   every query the CLI and UI use
+  fx.py  config.py  cli.py
 app/review.py     Streamlit UI
 eval/gold.json  eval/run_eval.py
 docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/

@@ -31,6 +31,8 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+# ruff also formats code blocks in Markdown; the docs are prose, not code to lint.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
