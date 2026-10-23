@@ -93,10 +93,25 @@ def price_comparisons(lines: Sequence[LineView]) -> list[PriceComparisonRecord]:
         if _is_identified(line):
             by_product[_product_key(line)].append(line)
     return [
-        PriceComparisonRecord(line_ids=[line.id for line in group], incoterm_warning=None)
+        PriceComparisonRecord(
+            line_ids=[line.id for line in group], incoterm_warning=_incoterm_warning(group)
+        )
         for group in by_product.values()
         if len({_quotation_key(line) for line in group}) > 1
     ]
+
+
+def _incoterm_warning(group: list[LineView]) -> str | None:
+    """Why the group's prices aren't like-for-like, when its Incoterms differ. A Quotation
+    stating none counts as differing: what its price includes is unknown."""
+    terms = {_words(line.incoterm) for line in group}
+    if len(terms) == 1 and "" not in terms:
+        return None
+    stated = dict.fromkeys(
+        f"{line.incoterm or 'no Incoterm'} from {line.supplier or Path(line.source).name}"
+        for line in group
+    )
+    return f"Prices are not like-for-like: {', '.join(stated)}"
 
 
 def _is_identified(line: LineView) -> bool:

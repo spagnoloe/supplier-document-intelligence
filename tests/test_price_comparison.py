@@ -195,3 +195,59 @@ def test_prices_are_compared_in_usd_per_uom_before_discount_whatever_the_currenc
         ("EUR", pytest.approx(0.15)),
         ("USD", pytest.approx(0.2)),
     ]
+
+
+def test_group_with_mixed_incoterms_warns_its_prices_are_not_like_for_like(
+    write_source, store, read_model
+):
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(amoxicillin(), incoterm="FCA", incoterm_place="Mumbai"),
+            "b.json": quotation(
+                amoxicillin(), supplier="Other Pharma", quote_ref="OP-1", incoterm="CIF"
+            ),
+        },
+    )
+
+    [group] = read_model.price_comparisons()
+    assert "not like-for-like" in group.incoterm_warning
+    assert [(line.incoterm, line.incoterm_place) for line in group.lines] == [
+        ("FCA", "Mumbai"),
+        ("CIF", None),
+    ]
+
+
+def test_group_under_one_incoterm_has_no_warning(write_source, store, read_model):
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(amoxicillin(), incoterm="FCA", incoterm_place="Mumbai"),
+            "b.json": quotation(
+                amoxicillin(), supplier="Other Pharma", quote_ref="OP-1", incoterm="fca"
+            ),
+        },
+    )
+
+    [group] = read_model.price_comparisons()
+    assert group.incoterm_warning is None
+
+
+def test_quotation_stating_no_incoterm_makes_its_group_not_like_for_like(
+    write_source, store, read_model
+):
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(amoxicillin(), incoterm="FCA"),
+            "b.json": quotation(
+                amoxicillin(), supplier="Other Pharma", quote_ref="OP-1", incoterm=None
+            ),
+        },
+    )
+
+    [group] = read_model.price_comparisons()
+    assert "not like-for-like" in group.incoterm_warning
