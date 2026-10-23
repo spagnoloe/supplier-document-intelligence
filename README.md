@@ -32,7 +32,7 @@ Each Source in the folder is loaded by file type, extracted by Gemini, verified,
 - **`--force`** reads every Source again, e.g. after a change to validation code, which the skip check doesn't cover.
 - **A Source read again starts a fresh review.** Its earlier approvals and corrections stay in the decision log, marked as no longer current, but aren't applied: a new reading can drop, split or reorder lines, so an old decision could land on the wrong product.
 
-The LLM cache isn't committed, so the first ingest from a fresh clone calls Gemini: one request per Source, plus a second read for each scan and each text Source with a line whose critical checks failed.
+Ingest needs network access to [Frankfurter](https://frankfurter.dev) for ECB exchange rates. Without it, non-USD lines get no USD price and the Review reason `FX_UNAVAILABLE`. The LLM cache isn't committed, so the first ingest from a fresh clone calls Gemini: one request per Source, plus a second read for each scan and each text Source with a line whose critical checks failed.
 
 ## Review UI
 
