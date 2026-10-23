@@ -217,6 +217,7 @@ def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, re
             ("quotation_lines", "verification_status"),
             ("quotation_lines", "headline_unit_price"),
             ("review_reasons", "origin"),
+            ("documents", "read_as_images"),
         ]:
             conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
 
@@ -225,6 +226,7 @@ def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, re
     assert {s.status for s in read_model.document_statuses()} == {"processed"}
     lines = {line.inns[0]: line for line in read_model.quotation_lines()}
     assert lines["alpha"].review_status == before.review_status
+    assert read_model.line_detail(lines["alpha"].id).source_image is None
     assert lines["beta"].headline_unit_price == 0.1
 
 

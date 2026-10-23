@@ -61,6 +61,9 @@ class FieldDetail(BaseModel):
 class LineDetail(BaseModel):
     line: LineView
     fields: list[FieldDetail]
+    # The Source to show next to the fields when the model read it as images: an image file,
+    # or a scanned PDF whose pages were rendered. None for a text Source.
+    source_image: str | None
 
 
 class ConflictValue(BaseModel):
@@ -90,6 +93,7 @@ _LINES_QUERY = """
            COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
            l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence,
            l.review_status, l.field_verification, q.evidence AS quotation_evidence,
+           d.read_as_images,
            {derived_columns},
            (SELECT json_group_array(json_object('code', r.code, 'field', r.field,
                                                 'message', r.message))
@@ -173,7 +177,9 @@ class ReadModel:
                     reasons=[r for r in view.review_reasons if r.field == field],
                 )
             )
-        return LineDetail(line=view, fields=fields)
+        return LineDetail(
+            line=view, fields=fields, source_image=view.source if row["read_as_images"] else None
+        )
 
     def conflicts(self) -> list[ConflictView]:
         with connect(self.db_path) as conn:

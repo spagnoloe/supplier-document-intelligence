@@ -202,3 +202,21 @@ def test_text_source_second_read_compares_only_lines_whose_critical_checks_faile
     assert (clean.review_status, clean.review_reasons) == ("auto_ok", [])
     assert ("SECOND_READ_DISAGREEMENT", "brand_name") in reasons_of(failed)
     assert len(second_reader.received) == 1
+
+
+def test_line_detail_references_the_source_image_only_for_image_lines(
+    write_source, store, read_model
+):
+    scan = write_source("scan.png", make_image())
+    text = write_source("offer.json", f'"{TEXT_SOURCE}"')
+    extractor = FakeExtractor(
+        {"scan.png": make_quotation(make_line()), "offer.json": text_quotation(text_line())}
+    )
+
+    ingest([scan, text], extractor, InMemoryFxSource(), store)
+
+    details = {
+        line.source: read_model.line_detail(line.id) for line in read_model.quotation_lines()
+    }
+    assert details[str(scan)].source_image == str(scan)
+    assert details[str(text)].source_image is None

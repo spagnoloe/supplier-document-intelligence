@@ -72,7 +72,13 @@ def build_graph(
     def store_node(state: SourceState) -> SourceState:
         path, quotation = state["source_path"], state["quotation"]
         if quotation.document_type in SUPPORTED_DOCUMENT_TYPES:
-            store.save_processed(path, file_type(Path(path)), quotation, state["verifications"])
+            store.save_processed(
+                path,
+                file_type(Path(path)),
+                quotation,
+                state["verifications"],
+                read_as_images=bool(state["content"].images),
+            )
         else:
             store.save_skipped(path, file_type(Path(path)), quotation.document_type)
         return {}
