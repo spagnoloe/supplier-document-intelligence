@@ -90,6 +90,10 @@ _Avoid_: Citation, quote
 A re-extraction of a Source by a stronger model, compared field by field with the first read. It runs for image Sources and for Sources with a line whose critical checks failed.
 _Avoid_: Double-check, re-run, verification pass
 
+**Review decision**:
+A reviewer's approval of a Quotation line, or correction of one of its fields, recorded with who and when. A correction sets the field's current value; the extracted value is kept.
+_Avoid_: Edit, override
+
 **Review reason**:
 A plain-language statement of why a Quotation line needs a human to look at it.
 _Avoid_: Warning, error

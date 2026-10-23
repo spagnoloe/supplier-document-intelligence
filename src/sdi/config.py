@@ -23,7 +23,13 @@ def load_settings() -> Settings:
     return Settings(
         extraction_model=os.environ.get("SDI_EXTRACTION_MODEL", "gemini-3.5-flash-lite"),
         second_read_model=os.environ.get("SDI_SECOND_READ_MODEL", "gemini-3.5-flash"),
-        db_path=Path(os.environ.get("SDI_DB_PATH", "sdi.db")),
+        db_path=database_path(),
         llm_cache_path=Path(os.environ.get("SDI_LLM_CACHE_PATH", ".cache/llm.db")),
         max_concurrency=int(os.environ.get("SDI_MAX_CONCURRENCY", "2")),
     )
+
+
+def database_path() -> Path:
+    """The SQLite database; commands that only read it need no API key."""
+    load_dotenv()
+    return Path(os.environ.get("SDI_DB_PATH", "sdi.db"))

@@ -282,6 +282,15 @@ Reconciliation never merges or picks a winner.
 - `fx_rates`
 - `review_decisions`: who, when, field, old → new, approve/correct. Extracted values are never overwritten.
 
+**Review decisions:**
+- The current value of a field is its latest correction, else the extracted value. The read model returns current values and keeps each corrected field's extracted value next to it. Headline, net and USD prices are recalculated from current values, using only FX rates ingest already cached, so a correction never fetches or estimates a rate.
+- A line is approved when its latest decision is an approval; a later correction withdraws it, since the approval covered other values.
+- Decisions are keyed by Source path and line number, not by line id: re-ingesting a Source replaces its lines, and decisions must outlive that.
+- Reconciliation compares extracted values. A correction resolves the line for export; it doesn't make the Sources agree, so the Conflict stays visible.
+- **CSV export** (`sdi export <file.csv>`): one row per line with current values, derived prices, review status, approval, corrected fields, Review reasons, and Source path + line number.
+
+**Known limitation:** the line number is the decision key, so a re-extraction that reorders or splits lines (a new model, a cache miss) attaches decisions to the wrong line. Each decision stores the old value it replaced, which shows the mismatch, but nothing checks it. Production would key decisions by Product key within the Source and send a line back to review when its extracted value changed under a decision.
+
 **Streamlit UI** (POC; production would be FastAPI + a proper frontend):
 1. **Review queue:** `needs_review` first, filter by supplier, status, Source and reason code.
 2. **Line detail:** fields next to their evidence, and the source image for image lines. Approve, or correct a field.
@@ -338,6 +347,7 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 
 **Run:**
 - `uv run sdi ingest data/`
+- `uv run sdi export lines.csv`
 - `uv run streamlit run app/review.py`
 
 **Secrets:** `.env` holds `GOOGLE_API_KEY`, with a committed `.env.example`.
@@ -378,5 +388,5 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 | Uncertainty signalling | §6, §7, ADR-0004 |
 | Production readiness | Column-mapping cache, provider-agnostic models with fallbacks, paid or no-training tier for PII, FastAPI review app, tracing |
 | CI/CD and infrastructure | Cached eval as regression gate, containerized worker, queue-based scaling |
-| Limitations | Whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching |
+| Limitations | Decisions keyed by line number (re-extraction that reorders lines misattaches them), whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching |
 | Data model reflection | §5 table |

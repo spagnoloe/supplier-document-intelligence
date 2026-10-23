@@ -1,8 +1,13 @@
 """Review decisions and CSV export, observed through ingest, the store's decision writes and
 the read model."""
 
+import csv
+from io import StringIO
+
 from conftest import FakeExtractor, InMemoryFxSource, make_quotation
 
+from sdi.cli import main
+from sdi.export import export_csv
 from sdi.pipeline import ingest
 
 
@@ -107,3 +112,36 @@ def test_correcting_ingredients_changes_the_line_inns(write_source, store, read_
     )
 
     assert read_model.quotation_lines()[0].inns == ["beta"]
+
+
+def test_export_has_current_values_review_status_reasons_and_source(
+    write_source, store, read_model
+):
+    quotation = make_quotation("Alpha", "Beta")
+    quotation.lines[1].pack_size = 0
+    ingest_sources(write_source, store, {"offer.json": quotation})
+    alpha, beta = read_model.quotation_lines()
+    store.correct(alpha.id, "pack_size", 20, reviewer="ana")
+    store.approve(alpha.id, reviewer="ana")
+
+    out = StringIO()
+    export_csv(read_model, out)
+
+    rows = list(csv.DictReader(StringIO(out.getvalue())))
+    assert [(r["source"], r["line_no"]) for r in rows] == [(alpha.source, "1"), (beta.source, "2")]
+    assert rows[0]["active_ingredients"] == "alpha"
+    assert (rows[0]["pack_size"], rows[0]["headline_unit_price"]) == ("20", "0.05")
+    assert (rows[0]["approved"], rows[0]["corrected_fields"]) == ("yes", "pack_size")
+    assert (rows[1]["review_status"], rows[1]["approved"]) == ("needs_review", "no")
+    assert "IMPLAUSIBLE_VALUE" in rows[1]["review_reasons"]
+
+
+def test_cli_writes_the_export(write_source, db_path, store, tmp_path, monkeypatch):
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")})
+    out = tmp_path / "lines.csv"
+    monkeypatch.setenv("SDI_DB_PATH", str(db_path))
+
+    main(["export", str(out)])
+
+    [row] = csv.DictReader(out.open())
+    assert row["active_ingredients"] == "alpha"
