@@ -1,7 +1,7 @@
 {
   "source": "scan_03_glare_partial_andina_p1.jpg",
   "source_type": "image",
-  "notes": "Bottle lines (04, 06) state no Pack size: the price is per bottle and no count of bottles per pack is given, so pack_size is expected empty. The 100 mL alternative in note (2) is out of scope and not a line. Photo of the PDF's page 1 with glare over rows 01-03 and a thumb over the Brand names of rows 04-06. Hidden values are expected empty; values only partly visible accept either empty or the true value. The table is rotated, so the right-hand columns sit about one row higher than the left ones: '3.0 / 22,348.80' belongs to row 02, not 01.",
+  "notes": "Bottle lines (04, 06) state no Pack size: the price is per bottle and no count of bottles per pack is given, so pack_size is expected empty. The 100 mL alternative in note (2) is out of scope and not a line. Photo of the PDF's page 1 with glare over rows 01-03 and a thumb over the Brand names of rows 04-06. Hidden values are expected empty; values only partly visible accept either empty or the true value. The table is rotated, so the right-hand columns sit about one row higher than the left ones: '3.0 / 22,348.80' belongs to row 02, not 01. Row 06's unit price can look like 0.4320 in the photo; the gold value is the true 0.4120, which its line total 37,080.00 confirms.",
   "quotation": {
     "supplier": "Farmaceutica Andina S.A.S.",
     "quote_ref": "FA-COT-2026-118",
@@ -35,7 +35,12 @@
       "pack_size": null,
       "unit_price": null,
       "pack_price": null,
-      "discount_pct": null,
+      "discount_pct": {
+        "any_of": [
+          null,
+          3.0
+        ]
+      },
       "quantity": null,
       "line_total": 52962.0,
       "price_tiers": []

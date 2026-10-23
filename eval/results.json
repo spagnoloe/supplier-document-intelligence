@@ -9,7 +9,7 @@
       },
       "fields": {
         "brand_name": {
-          "correct": 2,
+          "correct": 3,
           "scored": 3
         },
         "active_ingredients": {
@@ -72,7 +72,7 @@
         }
       },
       "flagging": {
-        "wrong": 1,
+        "wrong": 0,
         "flagged": 0
       },
       "review_load": {
@@ -80,7 +80,7 @@
         "needs_review": 1,
         "fields": 24,
         "flagged_fields": 1,
-        "correct_fields": 17,
+        "correct_fields": 18,
         "flagged_correct_fields": 1
       }
     },
@@ -446,7 +446,7 @@
     },
     "fields": {
       "brand_name": {
-        "correct": 41,
+        "correct": 42,
         "scored": 43
       },
       "active_ingredients": {
@@ -513,7 +513,7 @@
       }
     },
     "flagging": {
-      "wrong": 23,
+      "wrong": 22,
       "flagged": 6
     },
     "review_load": {
@@ -521,19 +521,11 @@
       "needs_review": 21,
       "fields": 388,
       "flagged_fields": 74,
-      "correct_fields": 300,
+      "correct_fields": 301,
       "flagged_correct_fields": 40
     }
   },
   "wrong_fields": [
-    {
-      "source": "RE_RFQ-2026-0244_Novara_quotation.eml",
-      "line_no": 3,
-      "field": "brand_name",
-      "expected": "Dexafar 4 mg/mL",
-      "actual": "Dexafar",
-      "flagged": false
-    },
     {
       "source": "mekong_pharma_quotation_MKP-2026-0812.pdf",
       "line_no": 3,
