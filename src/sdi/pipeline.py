@@ -120,8 +120,10 @@ def ingest(
     for path, result in zip(sources, results, strict=True):
         if isinstance(result, Exception):
             store.save_failed(str(path), file_type(path), _error_message(result))
-    # Reconciliation spans every stored Source, including those from earlier runs.
-    store.save_reconciliation(*reconcile(ReadModel(store.db_path).quotation_lines()))
+    # Reconciliation spans every stored Source, including those from earlier runs. It compares
+    # what the Sources say, so reviewers' corrections don't hide a Conflict.
+    lines = ReadModel(store.db_path).quotation_lines(corrected=False)
+    store.save_reconciliation(*reconcile(lines))
 
 
 def _second_read(

@@ -65,3 +65,45 @@ def test_a_correction_after_approval_withdraws_it(write_source, store, read_mode
     store.correct(line.id, "uom", "tablet", reviewer="ana")
 
     assert not read_model.quotation_lines()[0].approved
+
+
+def test_re_ingesting_keeps_decisions_and_compares_sources_on_extracted_values(
+    write_source, store, read_model
+):
+    quotations = {"a.json": make_quotation("Alpha"), "b.json": make_quotation("Alpha")}
+    quotations["b.json"].lines[0].pack_size = 20
+    ingest_sources(write_source, store, quotations)
+    line = next(line for line in read_model.quotation_lines() if line.source.endswith("b.json"))
+    store.correct(line.id, "pack_size", 10, reviewer="ana")
+    store.approve(line.id, reviewer="ana")
+
+    ingest_sources(write_source, store, quotations)
+
+    [line] = [line for line in read_model.quotation_lines() if line.source.endswith("b.json")]
+    assert [d.action for d in read_model.decisions(line.id)] == ["correct", "approve"]
+    assert (line.pack_size, line.extracted, line.approved) == (10, {"pack_size": 20}, True)
+    # The Sources still disagree: a correction resolves the line, not the Conflict.
+    [conflict] = read_model.conflicts()
+    assert sorted(v.value for v in conflict.values) == [10, 20]
+
+
+def test_prices_are_calculated_from_corrected_values(write_source, store, read_model):
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")})
+    [line] = read_model.quotation_lines()
+    assert (line.headline_unit_price, line.usd_per_uom) == (0.1, 0.1)
+
+    store.correct(line.id, "pack_size", 20, reviewer="ana")
+
+    [line] = read_model.quotation_lines()
+    assert (line.headline_unit_price, line.usd_per_uom) == (0.05, 0.05)
+
+
+def test_correcting_ingredients_changes_the_line_inns(write_source, store, read_model):
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")})
+    [line] = read_model.quotation_lines()
+
+    store.correct(
+        line.id, "active_ingredients", [{"name_as_written": "Beta", "inn": "beta"}], reviewer="ana"
+    )
+
+    assert read_model.quotation_lines()[0].inns == ["beta"]

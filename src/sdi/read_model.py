@@ -2,15 +2,18 @@
 the tables directly."""
 
 import json
+import sqlite3
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
-from sdi.extraction.schema import FieldEvidence
+from sdi.extraction.schema import FieldEvidence, QuotationLine
+from sdi.fx import FxRate
 from sdi.store import ProcessingStatus, connect
 from sdi.validation import FieldResult, ReviewReason, ReviewStatus
-from sdi.validation.pricing import DerivedPrices
+from sdi.validation.pricing import DerivedPrices, convert_to_usd, derive_prices
 
 
 class DocumentStatus(BaseModel):
@@ -112,6 +115,7 @@ _LINES_QUERY = """
            COALESCE(l.currency, q.currency) AS currency, l.discount_pct,
            l.quantity, l.line_total, l.price_tiers, l.revision_note, l.evidence,
            l.review_status, l.field_verification, q.evidence AS quotation_evidence,
+           q.issue_date,
            d.read_as_images,
            {derived_columns},
            (SELECT json_group_array(json_object('code', r.code, 'field', r.field,
@@ -148,8 +152,12 @@ class ReadModel:
             ).fetchall()
         return [DocumentStatus(**dict(r)) for r in rows]
 
-    def quotation_lines(self) -> list[LineView]:
-        return [view for view, _ in self._lines("ORDER BY d.source_path, l.line_no")]
+    def quotation_lines(self, *, corrected: bool = True) -> list[LineView]:
+        """Every line; with `corrected` False, as extracted, ignoring reviewers' corrections."""
+        return [
+            view
+            for view, _ in self._lines("ORDER BY d.source_path, l.line_no", corrected=corrected)
+        ]
 
     def review_queue(
         self,
@@ -266,24 +274,52 @@ class ReadModel:
             for r in rows
         ]
 
-    def _lines(self, clause: str, params: dict | None = None) -> list[tuple[LineView, dict]]:
+    def _lines(
+        self, clause: str, params: dict | None = None, *, corrected: bool = True
+    ) -> list[tuple[LineView, dict]]:
+        """Each line with its current values: the latest correction of a field, else the
+        extracted value. With `corrected` False, the extracted values only."""
         with connect(self.db_path) as conn:
             rows = conn.execute(_LINES_QUERY + clause, params or {}).fetchall()
-        views = []
-        for r in rows:
-            row = dict(r)
-            for col in ("active_ingredients", "price_tiers", "evidence", "review_reasons"):
-                row[col] = json.loads(row[col])
-            row["inns"] = [i["inn"] for i in row["active_ingredients"]]
-            decisions = json.loads(row.pop("decisions"))
-            row["approved"] = bool(decisions) and decisions[-1]["action"] == "approve"
-            corrections = {
-                d["field"]: d["new_value"] for d in decisions if d["action"] == "correct"
-            }
-            row["extracted"] = {field: row[field] for field in corrections}
-            row.update(corrections)
-            views.append((LineView(**row), row))
+            views = []
+            for r in rows:
+                row = dict(r)
+                for col in ("active_ingredients", "price_tiers", "evidence", "review_reasons"):
+                    row[col] = json.loads(row[col])
+                decisions = json.loads(row.pop("decisions"))
+                row["approved"] = bool(decisions) and decisions[-1]["action"] == "approve"
+                corrections = {
+                    d["field"]: d["new_value"]
+                    for d in decisions
+                    if corrected and d["action"] == "correct"
+                }
+                row["extracted"] = {field: row[field] for field in corrections}
+                row.update(corrections)
+                if corrections:
+                    row.update(_prices(conn, row).model_dump())
+                row["inns"] = [i["inn"] for i in row["active_ingredients"]]
+                views.append((LineView(**row), row))
         return views
+
+
+def _prices(conn: sqlite3.Connection, row: dict) -> DerivedPrices:
+    """Prices calculated from a line's current values, converted at the rate ingest cached for
+    its currency and issue date; with no cached rate the USD price is left empty."""
+    line = QuotationLine.model_validate(row)
+    prices = derive_prices(line)
+    if row["currency"] is not None:
+        issue_date = None if row["issue_date"] is None else date.fromisoformat(row["issue_date"])
+
+        def cached_rate(currency: str, on: date) -> FxRate | None:
+            rate = conn.execute(
+                "SELECT rate, rate_date, source FROM fx_rates"
+                " WHERE currency = ? AND requested_date = ?",
+                (currency, on.isoformat()),
+            ).fetchone()
+            return None if rate is None else FxRate(**dict(rate))
+
+        convert_to_usd(prices, row["currency"], issue_date, cached_rate)
+    return prices
 
 
 def _json(value: str | None) -> object:

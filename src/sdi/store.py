@@ -244,7 +244,9 @@ class Store:
         correction is the field's current value."""
         if field not in CORRECTABLE_FIELDS:
             raise ValueError(f"{field} is not a correctable Quotation line field")
-        adapter = TypeAdapter(QuotationLine.model_fields[field].annotation)
+        annotation = QuotationLine.model_fields[field].annotation
+        assert annotation is not None
+        adapter: TypeAdapter = TypeAdapter(annotation)
         new_value = adapter.dump_python(adapter.validate_python(value), mode="json")
         with connect(self.db_path) as conn:
             key = _line_key(conn, line_id)
