@@ -106,3 +106,54 @@ def test_inconsistent_unit_and_pack_prices_fail_with_arithmetic_mismatch(
     )
     [reason, *_] = line.review_reasons
     assert reason.message == "Unit price 0.5 × Pack size 30 = 15, but Pack price is 12.5"
+
+
+def test_line_total_verifies_quantity_price_and_discount(write_source, store, read_model):
+    # 20 packs × 1250 less 10% = 22,500.
+    line = make_line(quantity=20, discount_pct=10.0, line_total=22500.0)
+    ingest_scan(write_source, store, line)
+
+    [line] = read_model.quotation_lines()
+    results = results_of(read_model, line)
+    assert {f: results[f] for f in ("quantity", "line_total", "discount_pct", "pack_price")} == {
+        "quantity": "verified",
+        "line_total": "verified",
+        "discount_pct": "verified",
+        "pack_price": "verified",
+    }
+
+
+def test_line_total_checks_a_quantity_counted_in_uoms(write_source, store, read_model):
+    # 3000 capsules × 0.42 = 1260, with 0.42 only stated per capsule.
+    line = make_line(
+        pack_size=30, pack_price=None, unit_price=0.42, quantity=3000, line_total=1260.0
+    )
+    ingest_scan(write_source, store, line)
+
+    [line] = read_model.quotation_lines()
+    results = results_of(read_model, line)
+    assert (results["quantity"], results["line_total"], results["unit_price"]) == (
+        "verified",
+        "verified",
+        "verified",
+    )
+
+
+def test_line_total_mismatch_fails_the_fields_involved(write_source, store, read_model):
+    line = make_line(quantity=20, discount_pct=10.0, line_total=25000.0)
+    ingest_scan(write_source, store, line)
+
+    [line] = read_model.quotation_lines()
+    assert (line.review_status, reasons_of(line)) == (
+        "needs_review",
+        {
+            ("ARITHMETIC_MISMATCH", "quantity"),
+            ("ARITHMETIC_MISMATCH", "line_total"),
+            ("ARITHMETIC_MISMATCH", "discount_pct"),
+            ("ARITHMETIC_MISMATCH", "pack_price"),
+        },
+    )
+    [reason, *_] = line.review_reasons
+    assert reason.message == (
+        "Quantity 20 × Pack price 1250 less 10% = 22500, but line total is 25000"
+    )

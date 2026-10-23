@@ -5,6 +5,7 @@ by independent checks; the model's own confidence is never used. A line needs re
 a critical field fails or when it carries a revision. Every flag is a Review reason.
 """
 
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import Literal, get_args
 
@@ -93,6 +94,14 @@ class _LineChecks:
         self.fields[field] = "failed"
         self.note(code, field, message)
 
+    def verified_all(self, fields: Iterable[str]) -> None:
+        for field in fields:
+            self.verified(field)
+
+    def failed_all(self, fields: Iterable[str], code: ReasonCode, message: str) -> None:
+        for field in fields:
+            self.failed(field, code, message)
+
     def note(self, code: ReasonCode, field: str | None, message: str) -> None:
         self.reasons.append(ReviewReason(code=code, field=field, message=message))
 
@@ -125,7 +134,8 @@ def _verify_line(
             _check_evidence(checks, field, value, evidence, text)
         _check_certainty(checks, field, evidence)
     _check_rules(checks, line, quotation)
-    _check_arithmetic(checks, line)
+    prices = derive_prices(line)
+    _check_arithmetic(checks, line, prices)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
     if (tier := headline_tier(line)) is not None:
@@ -134,7 +144,7 @@ def _verify_line(
             None,
             f"Price depends on order volume; headline price is the tier from {tier.min_qty or 0:g}",
         )
-    return checks.result(derive_prices(line))
+    return checks.result(prices)
 
 
 def _field_value(
@@ -256,29 +266,58 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
             )
 
 
-def _check_arithmetic(checks: _LineChecks, line: QuotationLine) -> None:
-    """Stated values that must agree with each other verify together, or fail together."""
+def _check_arithmetic(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
+    """Stated values that must agree with each other verify together, or fail together:
+    arithmetic shows that one of them is wrong, not which."""
     unit, pack, pack_size = line.unit_price, line.pack_price, line.pack_size
     if unit is not None and pack is not None and pack_size is not None:
-        _cross_check(
-            checks,
-            ("unit_price", "pack_price", "pack_size"),
-            unit * pack_size,
-            pack,
-            f"Unit price {unit:g} × Pack size {pack_size:g} = {unit * pack_size:g}, "
-            f"but Pack price is {pack:g}",
-        )
+        fields = ("unit_price", "pack_price", "pack_size")
+        if _agrees(unit * pack_size, pack):
+            checks.verified_all(fields)
+        else:
+            checks.failed_all(
+                fields,
+                ReasonCode.ARITHMETIC_MISMATCH,
+                f"Unit price {unit:g} × Pack size {pack_size:g} = {unit * pack_size:g}, "
+                f"but Pack price is {pack:g}",
+            )
+    _check_line_total(checks, line, prices)
 
 
-def _cross_check(
-    checks: _LineChecks, fields: tuple[str, ...], calculated: float, stated: float, message: str
-) -> None:
-    if abs(calculated - stated) <= _ARITHMETIC_TOLERANCE * abs(stated):
-        for field in fields:
-            checks.verified(field)
-    else:
-        for field in fields:
-            checks.failed(field, ReasonCode.ARITHMETIC_MISMATCH, message)
+def _check_line_total(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
+    quantity, total = line.quantity, line.line_total
+    # A tier-only line has no single price to multiply: the tier depends on the quantity.
+    if quantity is None or total is None or (line.unit_price is None and line.pack_price is None):
+        return
+    # Quantity may count UOMs or Packs, so either price may produce the total. Each candidate
+    # carries the stated fields it rests on; stated prices come first.
+    candidates: list[tuple[str, float, tuple[str, ...]]] = []
+    if line.unit_price is not None:
+        candidates.append(("Unit price", line.unit_price, ("unit_price",)))
+    if line.pack_price is not None:
+        candidates.append(("Pack price", line.pack_price, ("pack_price",)))
+    if line.unit_price is None and prices.headline_unit_price is not None:
+        candidates.append(("Unit price", prices.headline_unit_price, ("pack_price", "pack_size")))
+    if line.pack_price is None and prices.headline_pack_price is not None:
+        candidates.append(("Pack price", prices.headline_pack_price, ("unit_price", "pack_size")))
+    keep = 1 - (line.discount_pct or 0) / 100
+    involved = ("quantity", "line_total") + (("discount_pct",) if line.discount_pct else ())
+    for _, price, fields in candidates:
+        if _agrees(quantity * price * keep, total):
+            checks.verified_all((*involved, *fields))
+            return
+    label, price, _ = candidates[0]
+    less = f" less {line.discount_pct:g}%" if line.discount_pct else ""
+    checks.failed_all(
+        involved + tuple(f for f in ("unit_price", "pack_price") if getattr(line, f) is not None),
+        ReasonCode.ARITHMETIC_MISMATCH,
+        f"Quantity {quantity:g} × {label} {price:g}{less} = {quantity * price * keep:g}, "
+        f"but line total is {total:g}",
+    )
+
+
+def _agrees(calculated: float, stated: float) -> bool:
+    return abs(calculated - stated) <= _ARITHMETIC_TOLERANCE * abs(stated)
 
 
 def _is_iso_currency(code: str) -> bool:
