@@ -39,6 +39,9 @@ class LineView(DerivedPrices):
     source: str
     supplier: str | None
     quote_ref: str | None
+    rfq_ref: str | None
+    issue_date: date | None
+    valid_until: date | None
     incoterm: str | None
     incoterm_place: str | None
     line_no: int
@@ -96,19 +99,22 @@ class LineDetail(BaseModel):
 
 
 class ConflictValue(BaseModel):
-    line_id: int
+    # None on a Quotation term: the value is the Source's, for every line in it.
+    line_id: int | None
     source: str
-    line_no: int
+    line_no: int | None
     value: object
 
 
 class ConflictView(BaseModel):
-    """One field the Sources of a Quotation disagree on, each Source's value side by side."""
+    """One field the Sources of a Quotation disagree on, each Source's value side by side.
+    A Quotation term has no Product: its ingredients are empty and its dosage form None."""
 
     id: int
     supplier: str | None
     quote_ref: str | None
     field: str
+    scope: Literal["line", "quotation"]
     inns: list[str]
     active_ingredients: list[dict]
     dosage_form: str | None
@@ -128,8 +134,8 @@ class PriceComparisonView(BaseModel):
 
 
 _LINES_QUERY = """
-    SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, q.incoterm,
-           q.incoterm_place, l.line_no,
+    SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, q.rfq_ref,
+           q.valid_until, q.incoterm, q.incoterm_place, l.line_no,
            l.brand_name, l.active_ingredients, l.dosage_form, l.uom,
            l.pack_size, l.unit_price, l.pack_price,
            COALESCE(l.currency, q.currency) AS currency, q.currency AS quotation_currency,
@@ -245,7 +251,7 @@ class ReadModel:
     def conflicts(self) -> list[ConflictView]:
         with connect(self.db_path) as conn:
             rows = conn.execute(
-                """SELECT c.id, c.supplier, c.quote_ref, c.field, v.line_id, v.value,
+                """SELECT c.id, c.supplier, c.quote_ref, c.field, c.scope, v.line_id, v.value,
                           d.source_path AS source, l.line_no, l.active_ingredients,
                           l.dosage_form
                    FROM conflicts c
@@ -257,23 +263,28 @@ class ReadModel:
             ).fetchall()
         views: dict[int, ConflictView] = {}
         for r in rows:
+            term = r["scope"] == "quotation"
             if r["id"] not in views:
-                ingredients = json.loads(r["active_ingredients"])
+                ingredients = [] if term else json.loads(r["active_ingredients"])
                 views[r["id"]] = ConflictView(
                     id=r["id"],
                     supplier=r["supplier"],
                     quote_ref=r["quote_ref"],
                     field=r["field"],
+                    scope=r["scope"],
                     inns=[i["inn"] for i in ingredients],
                     active_ingredients=ingredients,
-                    dosage_form=r["dosage_form"],
+                    dosage_form=None if term else r["dosage_form"],
                     values=[],
                 )
-            views[r["id"]].values.append(
+            values = views[r["id"]].values
+            if term and values and values[-1].source == r["source"]:
+                continue  # one value per Source, stored on each of its lines
+            values.append(
                 ConflictValue(
-                    line_id=r["line_id"],
+                    line_id=None if term else r["line_id"],
                     source=r["source"],
-                    line_no=r["line_no"],
+                    line_no=None if term else r["line_no"],
                     value=json.loads(r["value"]),
                 )
             )

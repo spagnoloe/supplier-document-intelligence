@@ -75,7 +75,7 @@ _Avoid_: Volume band, bracket
 ## Review
 
 **Conflict**:
-Disagreement between Sources about the same Quotation line (same supplier, quote reference, and Product). One value is wrong, so a reviewer must resolve it.
+Disagreement between Sources about the same Quotation line (same supplier, quote reference, and Product), or about a term of the same Quotation. One value is wrong, so a reviewer must resolve it.
 _Avoid_: Discrepancy, mismatch (when meaning across suppliers)
 
 **Price comparison**:
