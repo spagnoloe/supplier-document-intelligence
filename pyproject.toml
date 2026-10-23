@@ -1,0 +1,39 @@
+[project]
+name = "sdi"
+version = "0.1.0"
+description = "Extract supplier quotations from heterogeneous documents for human review"
+authors = [
+    { name = "Enric", email = "enricspagnolo@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "langchain-community>=0.4.2",
+    "langchain-core>=1.7.0",
+    "langchain-google-genai>=4.4.2",
+    "langgraph>=1.2.16",
+    "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
+]
+
+[project.scripts]
+sdi = "sdi.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore:`langchain-community` is being sunset:DeprecationWarning"]
