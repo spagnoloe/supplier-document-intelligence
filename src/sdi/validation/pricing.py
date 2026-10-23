@@ -27,6 +27,19 @@ class DerivedPrices(BaseModel):
     fx_source: str | None = None
 
 
+def usable_pack_size(line: QuotationLine) -> float | None:
+    """The Pack size, unless the rules reject it (not a positive whole number): a rejected
+    value calculates and cross-checks nothing."""
+    size = line.pack_size
+    return size if size is not None and size > 0 and size.is_integer() else None
+
+
+def usable_discount(line: QuotationLine) -> float | None:
+    """The discount percentage, unless the rules reject it (outside 0-100%)."""
+    discount = line.discount_pct
+    return discount if discount is not None and 0 <= discount <= 100 else None
+
+
 def headline_tier(line: QuotationLine) -> PriceTier | None:
     """The lowest-volume priced tier, when the line states no price of its own."""
     if line.unit_price is not None or line.pack_price is not None:
@@ -38,18 +51,15 @@ def headline_tier(line: QuotationLine) -> PriceTier | None:
 def derive_prices(line: QuotationLine) -> DerivedPrices:
     stated = headline_tier(line) or line
     unit, pack = stated.unit_price, stated.pack_price
-    # A Pack size the rules reject (not a positive whole number) calculates nothing.
-    pack_size = line.pack_size
-    if pack_size is not None and (pack_size <= 0 or not pack_size.is_integer()):
-        pack_size = None
+    pack_size = usable_pack_size(line)
     if pack_size is not None:
         if unit is None and pack is not None:
             unit = pack / pack_size
         elif pack is None and unit is not None:
             pack = unit * pack_size
     prices = DerivedPrices(headline_unit_price=unit, headline_pack_price=pack)
-    if line.discount_pct is not None:
-        keep = 1 - line.discount_pct / 100
+    if (discount := usable_discount(line)) is not None:
+        keep = 1 - discount / 100
         prices.net_unit_price = None if unit is None else unit * keep
         prices.net_pack_price = None if pack is None else pack * keep
     return prices

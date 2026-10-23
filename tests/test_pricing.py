@@ -219,3 +219,30 @@ def test_usd_price_needs_no_rate(write_source, store, read_model):
     [line] = read_model.quotation_lines()
     assert (line.usd_per_uom, line.fx_rate) == (12.5, 1.0)
     assert fx.requests == []
+
+
+def test_rejected_discount_and_pack_size_calculate_and_cross_check_nothing(
+    write_source, store, read_model
+):
+    line = make_line(pack_size=2.5, unit_price=0.5, discount_pct=150.0, quantity=1, line_total=1.0)
+    ingest_scan(write_source, store, line)
+
+    [line] = read_model.quotation_lines()
+    assert (line.net_unit_price, line.net_pack_price) == (None, None)
+    assert "ARITHMETIC_MISMATCH" not in {code for code, _ in reasons_of(line)}
+
+
+def test_line_total_verifies_a_stated_zero_discount(write_source, store, read_model):
+    ingest_scan(write_source, store, make_line(quantity=2, discount_pct=0.0, line_total=2500.0))
+
+    [line] = read_model.quotation_lines()
+    assert results_of(read_model, line)["discount_pct"] == "verified"
+
+
+def test_tiers_next_to_a_stated_price_are_still_flagged(write_source, store, read_model):
+    tiers = [PriceTier(min_qty=50, pack_price=1100.0)]
+    ingest_scan(write_source, store, make_line(price_tiers=tiers))
+
+    [line] = read_model.quotation_lines()
+    assert line.headline_pack_price == 1250.0
+    assert ("TIERED_PRICING", None) in reasons_of(line)

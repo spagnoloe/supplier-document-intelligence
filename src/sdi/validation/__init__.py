@@ -16,7 +16,14 @@ from sdi.extraction.schema import FieldEvidence, LineField, Quotation, Quotation
 from sdi.fx import FxSource
 from sdi.loaders import DocumentContent
 from sdi.validation.evidence import SourceText, numbers_in
-from sdi.validation.pricing import DerivedPrices, convert_to_usd, derive_prices, headline_tier
+from sdi.validation.pricing import (
+    DerivedPrices,
+    convert_to_usd,
+    derive_prices,
+    headline_tier,
+    usable_discount,
+    usable_pack_size,
+)
 
 FieldResult = Literal["verified", "unverified", "failed"]
 ReviewStatus = Literal["needs_review", "auto_ok"]
@@ -145,11 +152,15 @@ def _verify_line(
             checks.note(ReasonCode.FX_UNAVAILABLE, None, unavailable)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
-    if (tier := headline_tier(line)) is not None:
+    if line.price_tiers:
+        tier = headline_tier(line)
+        basis = (
+            "the line's stated price" if tier is None else f"the tier from {tier.min_qty or 0:g}"
+        )
         checks.note(
             ReasonCode.TIERED_PRICING,
             None,
-            f"Price depends on order volume; headline price is the tier from {tier.min_qty or 0:g}",
+            f"Price depends on order volume; headline price is {basis}",
         )
     return checks.result(prices)
 
@@ -276,7 +287,7 @@ def _check_rules(checks: _LineChecks, line: QuotationLine, quotation: Quotation)
 def _check_arithmetic(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
     """Stated values that must agree with each other verify together, or fail together:
     arithmetic shows that one of them is wrong, not which."""
-    unit, pack, pack_size = line.unit_price, line.pack_price, line.pack_size
+    unit, pack, pack_size = line.unit_price, line.pack_price, usable_pack_size(line)
     if unit is not None and pack is not None and pack_size is not None:
         fields = ("unit_price", "pack_price", "pack_size")
         if _agrees(unit * pack_size, pack):
@@ -292,10 +303,14 @@ def _check_arithmetic(checks: _LineChecks, line: QuotationLine, prices: DerivedP
 
 
 def _check_line_total(checks: _LineChecks, line: QuotationLine, prices: DerivedPrices) -> None:
-    quantity, total = line.quantity, line.line_total
-    # A tier-only line has no single price to multiply: the tier depends on the quantity.
-    if quantity is None or total is None or (line.unit_price is None and line.pack_price is None):
+    quantity, total, discount = line.quantity, line.line_total, usable_discount(line)
+    if quantity is None or total is None:
         return
+    # A tier-only line has no single price to multiply: the tier depends on the quantity.
+    if line.unit_price is None and line.pack_price is None:
+        return
+    if discount is None and line.discount_pct is not None:
+        return  # a discount the rules reject can't be applied
     # Quantity may count UOMs or Packs, so either price may produce the total. Each candidate
     # carries the stated fields it rests on; stated prices come first.
     candidates: list[tuple[str, float, tuple[str, ...]]] = []
@@ -307,14 +322,14 @@ def _check_line_total(checks: _LineChecks, line: QuotationLine, prices: DerivedP
         candidates.append(("Unit price", prices.headline_unit_price, ("pack_price", "pack_size")))
     if line.pack_price is None and prices.headline_pack_price is not None:
         candidates.append(("Pack price", prices.headline_pack_price, ("unit_price", "pack_size")))
-    keep = 1 - (line.discount_pct or 0) / 100
-    involved = ("quantity", "line_total") + (("discount_pct",) if line.discount_pct else ())
+    keep = 1 - (discount or 0) / 100
+    involved = ("quantity", "line_total") + (("discount_pct",) if discount is not None else ())
     for _, price, fields in candidates:
         if _agrees(quantity * price * keep, total):
             checks.verified_all((*involved, *fields))
             return
     label, price, _ = candidates[0]
-    less = f" less {line.discount_pct:g}%" if line.discount_pct else ""
+    less = f" less {discount:g}%" if discount else ""
     checks.failed_all(
         involved + tuple(f for f in ("unit_price", "pack_price") if getattr(line, f) is not None),
         ReasonCode.ARITHMETIC_MISMATCH,
