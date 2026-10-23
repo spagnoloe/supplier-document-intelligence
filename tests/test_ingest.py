@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import date
 
 from conftest import (
     FakeExtractor,
@@ -7,6 +8,7 @@ from conftest import (
     make_email,
     make_quotation,
     make_text_pdf,
+    make_workbook,
 )
 from langchain_core.exceptions import OutputParserException
 
@@ -207,3 +209,50 @@ def test_database_from_an_earlier_schema_gains_new_columns(db_path, write_source
 
     [line] = read_model.quotation_lines()
     assert line.headline_unit_price == 0.1
+
+
+def test_multi_sheet_workbook_reaches_extractor_as_text_one_row_per_line(
+    write_source, store, read_model
+):
+    source = write_source(
+        "prices.xlsx",
+        make_workbook(
+            {
+                "Prices": [
+                    ["Price list PL-1", None, None],
+                    [],
+                    ["Product", "Pack", "Unit price"],
+                    ["Alpha 500 mg tablet", 20, 0.0091],
+                    ["Beta 20 mg tablet", 30, 1.55],
+                ],
+                "Terms": [["Currency", "USD"], ["Valid until", date(2026, 9, 20)]],
+            }
+        ),
+    )
+    extractor = FakeExtractor({"prices.xlsx": make_quotation("Alpha", "Beta")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    # Each row stays on one line, so a price can't drift onto another product.
+    lines = received.text.splitlines()
+    assert "Product | Pack | Unit price" in lines
+    assert "Alpha 500 mg tablet | 20 | 0.0091" in lines
+    assert "Beta 20 mg tablet | 30 | 1.55" in lines
+    # Every sheet is kept and labelled, so terms on a second sheet still reach the model.
+    assert received.text.index("--- sheet Prices ---") < received.text.index("Beta 20 mg")
+    assert received.text.index("--- sheet Terms ---") < received.text.index("Currency | USD")
+    assert "Valid until | 2026-09-20" in lines
+    assert received.images == []
+    [status] = read_model.document_statuses()
+    assert (status.file_type, status.status, status.line_count) == ("xlsx", "processed", 2)
+
+
+def test_workbook_without_cell_values_reaches_extractor_with_no_text(write_source, store):
+    source = write_source("blank.xlsx", make_workbook({"Sheet1": [], "Sheet2": [[None, None]]}))
+    extractor = FakeExtractor({"blank.xlsx": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert received.text is None
