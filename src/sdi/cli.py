@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> None:
         "--force",
         action="store_true",
         help="Read every Source again, even if neither it nor the models or prompt changed "
-        "(e.g. after a change to validation).",
+        "(e.g. after a change to validation). Their review starts afresh.",
     )
     export_cmd = commands.add_parser(
         "export", help="Write every Quotation line, with corrections applied, as CSV."

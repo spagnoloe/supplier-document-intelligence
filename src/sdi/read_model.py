@@ -69,6 +69,8 @@ class ReviewDecision(BaseModel):
     field: str | None
     old_value: object
     new_value: object
+    # False once the Source has been read again: the decision was about lines since replaced.
+    current: bool
 
 
 class FieldDetail(BaseModel):
@@ -126,7 +128,7 @@ _LINES_QUERY = """
            (SELECT json_group_array(json_object('action', rd.action, 'field', rd.field,
                                                 'new_value', json(rd.new_value)))
             FROM (SELECT * FROM review_decisions
-                  WHERE source_path = d.source_path AND line_no = l.line_no ORDER BY id) rd
+                  WHERE extraction_id = d.extraction_id AND line_no = l.line_no ORDER BY id) rd
            ) AS decisions
     FROM quotation_lines l
     JOIN quotations q ON q.id = l.quotation_id
@@ -253,16 +255,29 @@ class ReadModel:
         return list(views.values())
 
     def decisions(self, line_id: int) -> list[ReviewDecision]:
-        """The line's review decisions, oldest first."""
+        """The review decisions that apply to the line, oldest first."""
+        return self._decisions("WHERE l.id = :line_id", {"line_id": line_id})
+
+    def decision_log(self) -> list[ReviewDecision]:
+        """Every review decision ever made, oldest first, including those on an earlier
+        reading of a Source that no longer apply."""
+        return self._decisions()
+
+    def _decisions(self, clause: str = "", params: dict | None = None) -> list[ReviewDecision]:
         with connect(self.db_path) as conn:
             rows = conn.execute(
-                """SELECT rd.*, rd.source_path AS source FROM review_decisions rd
-                   JOIN documents d ON d.source_path = rd.source_path
-                   JOIN quotations q ON q.document_id = d.id
-                   JOIN quotation_lines l ON l.quotation_id = q.id AND l.line_no = rd.line_no
-                   WHERE l.id = ?
-                   ORDER BY rd.id""",
-                (line_id,),
+                """SELECT rd.id, rd.source_path AS source, rd.line_no, rd.reviewer,
+                          rd.decided_at, rd.action, rd.field, rd.old_value, rd.new_value,
+                          l.id IS NOT NULL AS current
+                   FROM review_decisions rd
+                   LEFT JOIN documents d ON d.extraction_id = rd.extraction_id
+                   LEFT JOIN quotations q ON q.document_id = d.id
+                   LEFT JOIN quotation_lines l
+                       ON l.quotation_id = q.id AND l.line_no = rd.line_no
+                   """
+                + clause
+                + " ORDER BY rd.id",
+                params or {},
             ).fetchall()
         return [
             ReviewDecision(

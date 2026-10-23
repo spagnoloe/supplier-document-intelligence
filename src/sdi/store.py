@@ -6,6 +6,7 @@ folder never duplicates rows.
 
 import json
 import sqlite3
+import uuid
 from contextlib import closing, contextmanager
 from datetime import date
 from pathlib import Path
@@ -32,6 +33,8 @@ CREATE TABLE IF NOT EXISTS documents (
     -- The Source's content and the extraction setup it was read with; a re-run skips a
     -- Source whose fingerprint is unchanged.
     fingerprint TEXT,
+    -- Unique to each time the Source is read; review decisions belong to one reading.
+    extraction_id TEXT,
     processed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS quotations (
@@ -108,12 +111,14 @@ CREATE TABLE IF NOT EXISTS conflict_values (
     line_id INTEGER NOT NULL REFERENCES quotation_lines(id) ON DELETE CASCADE,
     value TEXT NOT NULL
 );
--- Keyed by Source and line number, not line id, and without a foreign key: re-ingesting a
--- Source replaces its lines, and a reviewer's decisions must outlive that. Values are JSON.
+-- A decision applies to the extraction it was made on: reading the Source again gives it a
+-- new extraction_id and a fresh review. No foreign key, so the log outlives the lines it
+-- was about. Values are JSON.
 CREATE TABLE IF NOT EXISTS review_decisions (
     id INTEGER PRIMARY KEY,
     source_path TEXT NOT NULL,
     line_no INTEGER NOT NULL,
+    extraction_id TEXT,
     reviewer TEXT NOT NULL,
     decided_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     action TEXT NOT NULL CHECK (action IN ('approve', 'correct')),
@@ -146,6 +151,7 @@ _BACKFILLS = {
     ("quotation_lines", "verification_status"): "review_status",
     ("review_reasons", "origin"): "'verification'",
     ("documents", "read_as_images"): "0",
+    ("documents", "extraction_id"): "lower(hex(randomblob(16)))",
 }
 
 
@@ -336,6 +342,7 @@ class Store:
                 "error": error,
                 "read_as_images": int(read_as_images),
                 "fingerprint": fingerprint,
+                "extraction_id": uuid.uuid4().hex,
             },
         )
 
@@ -370,9 +377,9 @@ def _require_reviewer(reviewer: str) -> None:
 
 
 def _line_key(conn: sqlite3.Connection, line_id: int) -> dict:
-    """The identity of a line that survives re-ingesting its Source: Source path and line no."""
+    """The reading of the Source a decision on the line applies to, and the line within it."""
     row = conn.execute(
-        """SELECT d.source_path, l.line_no FROM quotation_lines l
+        """SELECT d.extraction_id, d.source_path, l.line_no FROM quotation_lines l
            JOIN quotations q ON q.id = l.quotation_id
            JOIN documents d ON d.id = q.document_id
            WHERE l.id = ?""",
@@ -388,7 +395,7 @@ def _current_value(conn: sqlite3.Connection, line_id: int, key: dict, field: str
     of its own has the Quotation's."""
     corrected = conn.execute(
         """SELECT new_value FROM review_decisions
-           WHERE source_path = :source_path AND line_no = :line_no
+           WHERE extraction_id = :extraction_id AND line_no = :line_no
              AND action = 'correct' AND field = :field
            ORDER BY id DESC LIMIT 1""",
         {**key, "field": field},

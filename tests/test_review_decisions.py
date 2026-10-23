@@ -12,9 +12,15 @@ from sdi.export import export_csv
 from sdi.pipeline import ingest
 
 
-def ingest_sources(write_source, store, quotations: dict):
+def ingest_sources(write_source, store, quotations: dict, extraction_version: str = ""):
     sources = [write_source(name, "{}") for name in quotations]
-    ingest(sources, FakeExtractor(quotations), InMemoryFxSource(), store)
+    ingest(
+        sources,
+        FakeExtractor(quotations),
+        InMemoryFxSource(),
+        store,
+        extraction_version=extraction_version,
+    )
 
 
 def test_approving_a_line_is_recorded_in_its_decision_log(write_source, store, read_model):
@@ -27,7 +33,7 @@ def test_approving_a_line_is_recorded_in_its_decision_log(write_source, store, r
     assert (decision.action, decision.reviewer, decision.field) == ("approve", "ana", None)
     assert (decision.old_value, decision.new_value) == (None, None)
     assert decision.decided_at is not None
-    assert (decision.source, decision.line_no) == (line.source, 1)
+    assert (decision.source, decision.line_no, decision.current) == (line.source, 1, True)
     assert read_model.quotation_lines()[0].approved
 
 
@@ -73,7 +79,7 @@ def test_a_correction_after_approval_withdraws_it(write_source, store, read_mode
     assert not read_model.quotation_lines()[0].approved
 
 
-def test_re_ingesting_keeps_decisions_and_compares_sources_on_extracted_values(
+def test_re_ingesting_unchanged_sources_keeps_decisions_and_compares_extracted_values(
     write_source, store, read_model
 ):
     quotations = {"a.json": make_quotation("Alpha"), "b.json": make_quotation("Alpha")}
@@ -91,6 +97,26 @@ def test_re_ingesting_keeps_decisions_and_compares_sources_on_extracted_values(
     # The Sources still disagree: a correction resolves the line, not the Conflict.
     [conflict] = read_model.conflicts()
     assert sorted(v.value for v in conflict.values) == [10, 20]
+
+
+def test_reading_a_source_again_starts_its_review_afresh_and_keeps_the_log(
+    write_source, store, read_model
+):
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")}, "v1")
+    [line] = read_model.quotation_lines()
+    store.correct(line.id, "pack_size", 20, reviewer="ana")
+    store.approve(line.id, reviewer="ana")
+
+    ingest_sources(write_source, store, {"offer.json": make_quotation("Alpha")}, "v2")
+
+    [line] = read_model.quotation_lines()
+    assert (line.pack_size, line.extracted_values, line.approved) == (10, {}, False)
+    assert read_model.decisions(line.id) == []
+    log = read_model.decision_log()
+    assert [(d.action, d.source, d.line_no, d.current) for d in log] == [
+        ("correct", line.source, 1, False),
+        ("approve", line.source, 1, False),
+    ]
 
 
 def test_prices_are_calculated_from_corrected_values(write_source, store, read_model):
