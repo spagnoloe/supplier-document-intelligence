@@ -230,9 +230,9 @@ Both pack images are scans of the Andina PDF, so expected values come from the c
 - **`scan_02`** (skewed, noisy, columns visually misaligned) mostly verifies via the line totals.
 - **`scan_03`** items 01–03 (unit prices under glare) go to review.
 
-**Result** (flash-lite extracts, flash second-reads):
+**Result** (flash-lite extracts, flash second-reads; re-run with flash-lite second reads in `eval/results.md`, same outcome for `scan_02`):
 - **`scan_02`**: 3 of 6 lines `auto_ok`, every field verified by the line total and agreeing reads. Line 1 has a misread unit price (0.0094 for 0.0091). Both reads made the same misread, so agreement couldn't catch it; the line-total check and the Conflict with the PDF did. Lines 4 and 6 state no pack size, as in the clean PDF, which sends those lines to review too.
-- **`scan_03`**: the three glare-hidden unit prices come back empty and those lines are `needs_review`. The first read split one row into two (7 lines against 6), so the reads weren't compared and every line is in review.
+- **`scan_03`**: the three glare-hidden unit prices come back empty and those lines are `needs_review`. On the first run the first read split one row into two (7 lines against 6), so the reads weren't compared and every line was in review. On the committed re-run both reads give 6 lines; all 6 are still in review, on missing prices, line totals that contradict their own spans (`41` read from `41,400.00`) and arithmetic mismatches.
 
 How to read the `scan_02` number: the clean PDF itself can auto-accept only 4 of the 6 lines, since 2 state no pack size. Of those 4, the scan auto-accepts 3 and correctly flags the 4th as a misread. Accepting that line would be the actual failure. The prompt wasn't tuned to raise the number: that would fit it to the sample (ADR-0001).
 
@@ -273,7 +273,7 @@ Overlaps in the pack:
 
 Salbutamol (inhaler vs syrup) must stay separate.
 
-**Result:** all four overlaps form groups, and each carries the Incoterm warning (FCA vs CIF, FOB vs FCA, CIF vs CIP, FOB vs EXW). The salbutamol inhaler and syrup stay apart. Four more groups come from the Andina family only, because glare made `scan_03` read the reference as `FA-COT-2026-158`. That Source is unlinked, so the system can't tell it's the same Quotation. Matching references fuzzily was rejected (ADR-0003). The group shows one supplier quoting identical prices under two references, which a reviewer can spot. The exact dosage form also costs a pair: `scan_02` read the amoxicillin suspension as "Oral suspension powder", the PDF as "Powder for oral suspension".
+**Result:** all four overlaps form groups, and each carries the Incoterm warning (FCA vs CIF, FOB vs FCA, CIF vs CIP, FOB vs EXW). The salbutamol inhaler and syrup stay apart. Four more groups come from the Andina family only, because glare made `scan_03` read the reference as `FA-COT-2026-158` (`FA-COT-2636-108` on the committed re-run). That Source is unlinked, so the system can't tell it's the same Quotation. Matching references fuzzily was rejected (ADR-0003). The group shows one supplier quoting identical prices under two references, which a reviewer can spot. The exact dosage form also costs a pair: `scan_02` read the amoxicillin suspension as "Oral suspension powder", the PDF as "Powder for oral suspension".
 
 Reconciliation never merges or picks a winner.
 
