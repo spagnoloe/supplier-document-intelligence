@@ -31,6 +31,9 @@ class ReasonCode(StrEnum):
     INFERRED_VALUE = "INFERRED_VALUE"
     UNCLEAR_VALUE = "UNCLEAR_VALUE"
     REVISION = "REVISION"
+    # Raised by reconciliation across Sources, not by verification of one Source.
+    IN_CONFLICT = "IN_CONFLICT"
+    NO_QUOTE_REFERENCE = "NO_QUOTE_REFERENCE"
 
 
 class ReviewReason(BaseModel):
