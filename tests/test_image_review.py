@@ -96,13 +96,17 @@ def test_image_line_whose_two_reads_agree_is_auto_ok(write_source, store, read_m
 
     [line] = read_model.review_queue()
     assert (line.review_status, line.review_reasons) == ("auto_ok", [])
-    assert set(results_of(read_model, line).values()) == {"verified"}
+    results = results_of(read_model, line)
+    # The dosage form is a term the model standardizes, so reads agreeing on it prove nothing.
+    assert results.pop("dosage_form") == "unverified"
+    assert set(results.values()) == {"verified"}
 
 
 def test_fields_the_two_reads_disagree_on_fail_with_second_read_disagreement(
     write_source, store, read_model
 ):
-    second = make_line(pack_price=12.0, uom="Capsule")  # same uom, written differently
+    # The same UOM written differently, and the dosage form standardized to another term.
+    second = make_line(pack_price=12.0, uom="Capsule", dosage_form="Hard capsule")
     ingest_scan(write_source, store, make_quotation(make_line()), make_quotation(second))
 
     [line] = read_model.review_queue()

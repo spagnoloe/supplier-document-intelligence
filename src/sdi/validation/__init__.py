@@ -79,6 +79,10 @@ _NON_MONEY_CODES = frozenset(
     {"XAG", "XAU", "XPD", "XPT", "XDR", "XBA", "XBB", "XBC", "XBD", "XSU", "XUA", "XTS", "XXX"}
 )
 
+# Fields two reads of one Source should give alike. Not the dosage form: it is a standardized
+# term the model chooses ("Syrup" or "Oral syrup"), not a value it reads off the page.
+_SECOND_READ_FIELDS = tuple(f for f in get_args(LineField) if f != "dosage_form")
+
 # Relative tolerance for a float value against the number written in its evidence.
 _NUMBER_TOLERANCE = 1e-9
 
@@ -229,7 +233,7 @@ def _check_second_read(
         checks.note(ReasonCode.SECOND_READ_DISAGREEMENT, None, reread.mismatch)
         return
     other = reread.quotation.lines[n]
-    for field in get_args(LineField):
+    for field in _SECOND_READ_FIELDS:
         first, _ = _field_value(line, quotation, field)
         second, _ = _field_value(other, reread.quotation, field)
         if first in (None, []) or second in (None, []):
