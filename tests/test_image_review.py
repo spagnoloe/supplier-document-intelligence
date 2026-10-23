@@ -328,3 +328,17 @@ def test_image_value_agreeing_with_its_own_evidence_is_still_unverified(
     [line] = read_model.review_queue()
     assert results_of(read_model, line)["pack_size"] == "unverified"
     assert ("UNVERIFIED_IMAGE_VALUE", "pack_size") in reasons_of(line)
+
+
+def test_source_images_are_the_pages_the_model_was_given(write_source, store, read_model):
+    image = make_image()
+    scan = write_source("scan.png", image)
+    ingest(
+        [scan], FakeExtractor({"scan.png": make_quotation(make_line())}), InMemoryFxSource(), store
+    )
+
+    [line] = read_model.quotation_lines()
+    detail = read_model.line_detail(line.id)
+
+    assert detail.source_image is not None
+    assert read_model.source_images(detail.source_image) == [image]

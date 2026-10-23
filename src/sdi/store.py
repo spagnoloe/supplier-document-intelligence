@@ -164,10 +164,13 @@ class PriceComparisonRecord(BaseModel):
     incoterm_warning: str | None
 
 
-# SQL value for a column added since a database was created, for the rows it already holds.
-# Before reconciliation existed, a line's own verification outcome was its review status, and
-# every reason came from verification.
+# SQL value for a column added since a database was created, for the rows it already holds,
+# applied in this order. A line stored before verification existed was never checked, so it
+# needs review. Before reconciliation existed, a line's own verification outcome was its review
+# status, and every reason came from verification.
 _BACKFILLS = {
+    ("quotation_lines", "review_status"): "'needs_review'",
+    ("quotation_lines", "field_verification"): "'{}'",
     ("quotation_lines", "verification_status"): "review_status",
     ("review_reasons", "origin"): "'verification'",
     ("documents", "read_as_images"): "0",
@@ -400,7 +403,9 @@ def cached_fx_rate(conn: sqlite3.Connection, currency: str, on: date) -> FxRate 
 def _add_missing_columns(conn: sqlite3.Connection) -> None:
     """A database from an earlier schema gains the columns added since, so an existing
     sdi.db keeps working; nothing is dropped or changed. Existing rows get the column's
-    backfill value, so a column the code relies on is never left empty."""
+    backfill value, so a column the code relies on is never left empty. Every column is added
+    before any is backfilled, since a backfill can read another added column's value."""
+    added = set()
     with closing(sqlite3.connect(":memory:")) as reference:
         reference.executescript(SCHEMA)
         tables = reference.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -409,8 +414,10 @@ def _add_missing_columns(conn: sqlite3.Connection) -> None:
             for _, column, column_type, *_ in reference.execute(f"PRAGMA table_info({table})"):
                 if column not in existing:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
-                    if (backfill := _BACKFILLS.get((table, column))) is not None:
-                        conn.execute(f"UPDATE {table} SET {column} = {backfill}")
+                    added.add((table, column))
+    for (table, column), backfill in _BACKFILLS.items():
+        if (table, column) in added:
+            conn.execute(f"UPDATE {table} SET {column} = {backfill}")
 
 
 def _require_reviewer(reviewer: str) -> None:
