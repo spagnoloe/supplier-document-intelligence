@@ -103,6 +103,7 @@ class Store:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with connect(self.db_path) as conn:
             conn.executescript(SCHEMA)
+            _add_missing_columns(conn)
 
     def save_processed(
         self,
@@ -182,6 +183,19 @@ class Store:
                 "error": error,
             },
         )
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """A database from an earlier schema gains the columns added since, so an existing
+    sdi.db keeps working; nothing is dropped or changed."""
+    with closing(sqlite3.connect(":memory:")) as reference:
+        reference.executescript(SCHEMA)
+        tables = reference.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        for (table,) in tables.fetchall():
+            existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for _, column, column_type, *_ in reference.execute(f"PRAGMA table_info({table})"):
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 def _insert(conn: sqlite3.Connection, table: str, values: dict) -> int:

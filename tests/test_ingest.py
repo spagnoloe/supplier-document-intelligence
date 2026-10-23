@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 from conftest import (
     FakeExtractor,
@@ -10,6 +11,7 @@ from conftest import (
 from langchain_core.exceptions import OutputParserException
 
 from sdi.pipeline import ingest
+from sdi.store import Store
 
 
 def test_json_source_lines_are_readable_through_read_model(write_source, store, read_model):
@@ -183,3 +185,25 @@ def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, sto
 
     [received] = extractor.received
     assert received.text is None
+
+
+def test_database_from_an_earlier_schema_gains_new_columns(db_path, write_source, read_model):
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE quotation_lines (id INTEGER PRIMARY KEY, quotation_id INTEGER, line_no"
+            " INTEGER, brand_name TEXT, active_ingredients TEXT, dosage_form TEXT, uom TEXT,"
+            " pack_size REAL, unit_price REAL, pack_price REAL, currency TEXT, discount_pct REAL,"
+            " quantity REAL, line_total REAL, price_tiers TEXT, revision_note TEXT, evidence TEXT,"
+            " review_status TEXT, field_verification TEXT)"
+        )
+    source = write_source("export.json", "{}")
+
+    ingest(
+        [source],
+        FakeExtractor({"export.json": make_quotation("Alpha")}),
+        InMemoryFxSource(),
+        Store(db_path),
+    )
+
+    [line] = read_model.quotation_lines()
+    assert line.headline_unit_price == 0.1
