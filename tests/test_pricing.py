@@ -75,7 +75,9 @@ def test_tiered_line_takes_the_lowest_volume_tier_as_headline(write_source, stor
 
 
 def ingest_scan(write_source, store, line, **kwargs):
-    """A Source without text: no evidence check runs, so only arithmetic can verify a field."""
+    """A Source without text, and a line without evidence spans: only arithmetic can verify
+    or fail a field."""
+    line = line.model_copy(update={"evidence": []})
     ingest_one(
         write_source, store, make_quotation(line), make_text_pdf(), name="scan.pdf", **kwargs
     )

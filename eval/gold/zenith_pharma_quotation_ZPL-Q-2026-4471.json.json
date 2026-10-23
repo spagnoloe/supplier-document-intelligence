@@ -1,0 +1,102 @@
+{
+  "source": "zenith_pharma_quotation_ZPL-Q-2026-4471.json",
+  "source_type": "json",
+  "notes": "MOQ is not an order quantity, so quantity is not scored.",
+  "quotation": {
+    "supplier": "Zenith Pharma Laboratories Ltd.",
+    "quote_ref": "ZPL-Q-2026-4471",
+    "currency": "USD",
+    "incoterm": "CIP",
+    "incoterm_place": {
+      "any_of": [
+        "Lagos, Nigeria (NGLOS)",
+        "Lagos",
+        "Lagos, Nigeria"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "brand_name": "Zenamox 500/125",
+      "active_ingredients": [
+        {
+          "inn": "amoxicillin",
+          "strength_value": 500,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "clavulanic acid",
+          "strength_value": 125,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 14,
+      "unit_price": 0.0642,
+      "pack_price": 0.899,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Artezen-20/120",
+      "active_ingredients": [
+        {
+          "inn": "artemether",
+          "strength_value": 20,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "lumefantrine",
+          "strength_value": 120,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 24,
+      "unit_price": 0.0398,
+      "pack_price": 0.955,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Metzen XR 1000",
+      "active_ingredients": [
+        {
+          "inn": "metformin",
+          "strength_value": 1000,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Prolonged-release tablet",
+      "uom": "tablet",
+      "pack_size": 60,
+      "unit_price": 0.0215,
+      "pack_price": 1.29,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Oxyzen 10 IU/mL",
+      "active_ingredients": [
+        {
+          "inn": "oxytocin",
+          "strength_value": 10,
+          "strength_unit": "IU/mL"
+        }
+      ],
+      "dosage_form": "Solution for injection",
+      "uom": "ampoule",
+      "pack_size": 10,
+      "unit_price": 0.128,
+      "pack_price": 1.28,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    }
+  ]
+}

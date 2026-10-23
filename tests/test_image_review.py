@@ -285,6 +285,51 @@ def test_a_misread_strength_is_a_disagreement_not_a_different_product(
     assert reasons_of(line) == {("SECOND_READ_DISAGREEMENT", "active_ingredients")}
 
 
+def ingest_image_line(write_source, store, line: QuotationLine) -> None:
+    source = write_source("scan.png", make_image())
+    ingest(
+        [source],
+        FakeExtractor({"scan.png": make_quotation(line)}),
+        InMemoryFxSource(),
+        store,
+    )
+
+
+def test_image_value_its_own_evidence_contradicts_fails(write_source, store, read_model):
+    # 10 boxes for 125.00 checks out, but the model's own spans say 125,000.00: it read the
+    # thousands separator as a decimal point in both numbers, so the arithmetic agrees.
+    spans = {"quantity": "10,000", "line_total": "125,000.00"}
+    ingest_image_line(
+        write_source,
+        store,
+        make_line(
+            evidence=[
+                LineFieldEvidence(field=f, span=s, certainty="stated") for f, s in spans.items()
+            ]
+        ),
+    )
+
+    [line] = read_model.review_queue()
+    assert results_of(read_model, line)["line_total"] == "failed"
+    [reason] = [r for r in line.review_reasons if r.field == "line_total"]
+    assert (reason.code, reason.message) == (
+        "EVIDENCE_NOT_FOUND",
+        "125 not found in its evidence '125,000.00'",
+    )
+
+
+def test_image_value_agreeing_with_its_own_evidence_is_still_unverified(
+    write_source, store, read_model
+):
+    # The span is the model's own reading of the image, so agreeing with it confirms nothing.
+    evidence = [LineFieldEvidence(field="pack_size", span="100 capsules", certainty="stated")]
+    ingest_image_line(write_source, store, make_line(evidence=evidence))
+
+    [line] = read_model.review_queue()
+    assert results_of(read_model, line)["pack_size"] == "unverified"
+    assert ("UNVERIFIED_IMAGE_VALUE", "pack_size") in reasons_of(line)
+
+
 def test_source_images_are_the_pages_the_model_was_given(write_source, store, read_model):
     image = make_image()
     scan = write_source("scan.png", image)

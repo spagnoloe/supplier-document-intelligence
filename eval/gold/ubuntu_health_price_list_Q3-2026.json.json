@@ -1,0 +1,148 @@
+{
+  "source": "ubuntu_health_price_list_Q3-2026.json",
+  "source_type": "json",
+  "notes": "Prices are tiered pack prices only, so the flat unit_price and pack_price are expected empty. Tier quantities are in packs, as the list states them. DAP 'quotable on request' is not the quoted Incoterm.",
+  "quotation": {
+    "supplier": "Ubuntu Health Manufacturing (Pty) Ltd",
+    "quote_ref": "UHM-PL-2026-Q3",
+    "currency": "ZAR",
+    "incoterm": "EXW",
+    "incoterm_place": "Ekurhuleni"
+  },
+  "lines": [
+    {
+      "brand_name": "Panadel 500",
+      "active_ingredients": [
+        {
+          "inn": "paracetamol",
+          "strength_value": 500,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 1000,
+      "unit_price": null,
+      "pack_price": null,
+      "discount_pct": null,
+      "quantity": null,
+      "line_total": null,
+      "price_tiers": [
+        {
+          "min_qty": 100,
+          "max_qty": 999,
+          "unit_price": null,
+          "pack_price": 41.5
+        },
+        {
+          "min_qty": 1000,
+          "max_qty": 4999,
+          "unit_price": null,
+          "pack_price": 37.9
+        },
+        {
+          "min_qty": 5000,
+          "max_qty": null,
+          "unit_price": null,
+          "pack_price": 34.2
+        }
+      ]
+    },
+    {
+      "brand_name": "Ubucef 1 g",
+      "active_ingredients": [
+        {
+          "inn": "ceftriaxone",
+          "strength_value": 1,
+          "strength_unit": "g"
+        }
+      ],
+      "dosage_form": "Powder for solution for injection",
+      "uom": "vial",
+      "pack_size": 10,
+      "unit_price": null,
+      "pack_price": null,
+      "discount_pct": null,
+      "quantity": null,
+      "line_total": null,
+      "price_tiers": [
+        {
+          "min_qty": 500,
+          "max_qty": 4999,
+          "unit_price": null,
+          "pack_price": 178.0
+        },
+        {
+          "min_qty": 5000,
+          "max_qty": null,
+          "unit_price": null,
+          "pack_price": 161.5
+        }
+      ]
+    },
+    {
+      "brand_name": "Misotab 200",
+      "active_ingredients": [
+        {
+          "inn": "misoprostol",
+          "strength_value": 200,
+          "strength_unit": "mcg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 60,
+      "unit_price": null,
+      "pack_price": null,
+      "discount_pct": null,
+      "quantity": null,
+      "line_total": null,
+      "price_tiers": [
+        {
+          "min_qty": 200,
+          "max_qty": 1999,
+          "unit_price": null,
+          "pack_price": 96.75
+        },
+        {
+          "min_qty": 2000,
+          "max_qty": null,
+          "unit_price": null,
+          "pack_price": 88.4
+        }
+      ]
+    },
+    {
+      "brand_name": "Ubuglar 100",
+      "active_ingredients": [
+        {
+          "inn": "insulin glargine",
+          "strength_value": 100,
+          "strength_unit": "IU/mL"
+        }
+      ],
+      "dosage_form": "Solution for injection in pre-filled pen",
+      "uom": "pen",
+      "pack_size": 5,
+      "unit_price": null,
+      "pack_price": null,
+      "discount_pct": null,
+      "quantity": null,
+      "line_total": null,
+      "price_tiers": [
+        {
+          "min_qty": 250,
+          "max_qty": 2499,
+          "unit_price": null,
+          "pack_price": 612.0
+        },
+        {
+          "min_qty": 2500,
+          "max_qty": null,
+          "unit_price": null,
+          "pack_price": 559.0
+        }
+      ]
+    }
+  ]
+}

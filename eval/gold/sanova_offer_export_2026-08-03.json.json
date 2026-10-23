@@ -1,0 +1,98 @@
+{
+  "source": "sanova_offer_export_2026-08-03.json",
+  "source_type": "json",
+  "notes": "The export states pack prices only ('Unit prices not stated separately'), so unit_price is expected empty. MOQ is not an order quantity, so quantity is not scored.",
+  "quotation": {
+    "supplier": "Sanova Laboratories Pvt. Ltd.",
+    "quote_ref": "SNV/EXP/2026/0771",
+    "currency": "EUR",
+    "incoterm": "FCA",
+    "incoterm_place": {
+      "any_of": [
+        "Mumbai (INBOM)",
+        "Mumbai"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "brand_name": "Sanotri-TLD",
+      "active_ingredients": [
+        {
+          "inn": "tenofovir disoproxil",
+          "strength_value": 300,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "lamivudine",
+          "strength_value": 300,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "dolutegravir",
+          "strength_value": 50,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 90,
+      "unit_price": null,
+      "pack_price": 3.15,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Sanofour Kit",
+      "active_ingredients": [
+        {
+          "inn": "rifampicin",
+          "strength_value": 150,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "isoniazid",
+          "strength_value": 75,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "pyrazinamide",
+          "strength_value": 400,
+          "strength_unit": "mg"
+        },
+        {
+          "inn": "ethambutol",
+          "strength_value": 275,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Dispersible film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 672,
+      "unit_price": null,
+      "pack_price": 8.42,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Sanodip 5",
+      "active_ingredients": [
+        {
+          "inn": "amlodipine",
+          "strength_value": 5,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Tablet",
+      "uom": "tablet",
+      "pack_size": 30,
+      "unit_price": null,
+      "pack_price": 0.312,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    }
+  ]
+}

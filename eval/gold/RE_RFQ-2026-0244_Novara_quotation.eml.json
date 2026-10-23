@@ -1,0 +1,79 @@
+{
+  "source": "RE_RFQ-2026-0244_Novara_quotation.eml",
+  "source_type": "email",
+  "notes": "The P.S. corrects line 1 from 0.128 to 0.134 per tablet; the final value is expected. The supplier gives no reference of its own (RFQ-2026-0244 is Axmed's), so quote_ref is expected empty. MOQ is not an order quantity, so quantity is not scored. Zinc sulfate keeps its whole name (inorganic salt). Line 3's Brand name is written 'Dexafar 4 mg/mL'; without the strength it still names the product, so both are accepted.",
+  "quotation": {
+    "supplier": "Novara Farmaceutici S.p.A.",
+    "quote_ref": null,
+    "currency": "EUR",
+    "incoterm": "FCA",
+    "incoterm_place": {
+      "any_of": [
+        "Milan Malpensa",
+        "Malpensa",
+        "Milan Malpensa Airport"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "brand_name": "Azimax 250",
+      "active_ingredients": [
+        {
+          "inn": "azithromycin",
+          "strength_value": 250,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Film-coated tablet",
+      "uom": "tablet",
+      "pack_size": 6,
+      "unit_price": 0.134,
+      "pack_price": null,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": "Zincora 20",
+      "active_ingredients": [
+        {
+          "inn": "zinc sulfate",
+          "strength_value": 20,
+          "strength_unit": "mg"
+        }
+      ],
+      "dosage_form": "Dispersible tablet",
+      "uom": "tablet",
+      "pack_size": 100,
+      "unit_price": null,
+      "pack_price": 1.55,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    },
+    {
+      "brand_name": {
+        "any_of": [
+          "Dexafar 4 mg/mL",
+          "Dexafar"
+        ]
+      },
+      "active_ingredients": [
+        {
+          "inn": "dexamethasone",
+          "strength_value": 4,
+          "strength_unit": "mg/mL"
+        }
+      ],
+      "dosage_form": "Solution for injection",
+      "uom": "ampoule",
+      "pack_size": 25,
+      "unit_price": 0.41,
+      "pack_price": null,
+      "discount_pct": null,
+      "line_total": null,
+      "price_tiers": []
+    }
+  ]
+}
