@@ -2,7 +2,8 @@
 
 Every non-empty field, and every critical field, is marked verified, unverified or failed
 by independent checks; the model's own confidence is never used. A line needs review when
-a critical field fails or when it carries a revision. Every flag is a Review reason.
+a critical field fails, when a critical field read from an image is left unverified, or when
+it carries a revision. Every flag is a Review reason.
 """
 
 from collections.abc import Iterable
@@ -44,6 +45,7 @@ class ReasonCode(StrEnum):
     REVISION = "REVISION"
     TIERED_PRICING = "TIERED_PRICING"
     FX_UNAVAILABLE = "FX_UNAVAILABLE"
+    UNVERIFIED_IMAGE_VALUE = "UNVERIFIED_IMAGE_VALUE"
     # Raised by reconciliation across Sources, not by verification of one Source.
     IN_CONFLICT = "IN_CONFLICT"
     NO_QUOTE_REFERENCE = "NO_QUOTE_REFERENCE"
@@ -86,7 +88,8 @@ _ARITHMETIC_TOLERANCE = 0.01
 def verify(quotation: Quotation, content: DocumentContent, fx: FxSource) -> list[LineVerification]:
     # Without source text (images) the evidence check can't run, so fields stay unverified.
     text = SourceText(content.text) if content.text else None
-    return [_verify_line(line, quotation, text, fx) for line in quotation.lines]
+    image = bool(content.images)
+    return [_verify_line(line, quotation, text, image, fx) for line in quotation.lines]
 
 
 class _LineChecks:
@@ -136,7 +139,7 @@ class _LineChecks:
 
 
 def _verify_line(
-    line: QuotationLine, quotation: Quotation, text: SourceText | None, fx: FxSource
+    line: QuotationLine, quotation: Quotation, text: SourceText | None, image: bool, fx: FxSource
 ) -> LineVerification:
     checks = _LineChecks()
     for field in get_args(LineField):
@@ -167,7 +170,21 @@ def _verify_line(
             None,
             f"Price depends on order volume; headline price is {basis}",
         )
+    if image:
+        _check_image_values(checks)
     return checks.result(prices)
+
+
+def _check_image_values(checks: _LineChecks) -> None:
+    """A model can misread an image without anything in the Source contradicting it, so a
+    critical value read from one needs a check that confirms it (ADR-0004)."""
+    for field, result in list(checks.fields.items()):
+        if field in CRITICAL_FIELDS and result == "unverified":
+            checks.force_review(
+                ReasonCode.UNVERIFIED_IMAGE_VALUE,
+                field,
+                f"{field} was read from an image and no check confirms it",
+            )
 
 
 def _field_value(
