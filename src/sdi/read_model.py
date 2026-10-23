@@ -3,6 +3,7 @@ the tables directly."""
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -48,11 +49,29 @@ class LineView(DerivedPrices):
     evidence: list[FieldEvidence]
     review_status: ReviewStatus
     review_reasons: list[ReviewReason]
+    # True when the line's latest review decision is an approval.
+    approved: bool
+    # The extracted value of each field a reviewer corrected; the fields above hold the
+    # current value, the latest correction.
+    extracted: dict[str, object]
+
+
+class ReviewDecision(BaseModel):
+    id: int
+    source: str
+    line_no: int
+    reviewer: str
+    decided_at: str
+    action: Literal["approve", "correct"]
+    field: str | None
+    old_value: object
+    new_value: object
 
 
 class FieldDetail(BaseModel):
     field: str
     value: object
+    extracted_value: object
     evidence: list[FieldEvidence]
     result: FieldResult
     reasons: list[ReviewReason]
@@ -98,7 +117,12 @@ _LINES_QUERY = """
            (SELECT json_group_array(json_object('code', r.code, 'field', r.field,
                                                 'message', r.message))
             FROM (SELECT * FROM review_reasons WHERE line_id = l.id ORDER BY id) r
-           ) AS review_reasons
+           ) AS review_reasons,
+           (SELECT json_group_array(json_object('action', rd.action, 'field', rd.field,
+                                                'new_value', json(rd.new_value)))
+            FROM (SELECT * FROM review_decisions
+                  WHERE source_path = d.source_path AND line_no = l.line_no ORDER BY id) rd
+           ) AS decisions
     FROM quotation_lines l
     JOIN quotations q ON q.id = l.quotation_id
     JOIN documents d ON d.id = q.document_id
@@ -172,6 +196,7 @@ class ReadModel:
                 FieldDetail(
                     field=field,
                     value=getattr(view, field),
+                    extracted_value=view.extracted.get(field, getattr(view, field)),
                     evidence=evidence,
                     result=result,
                     reasons=[r for r in view.review_reasons if r.field == field],
@@ -218,6 +243,29 @@ class ReadModel:
             )
         return list(views.values())
 
+    def decisions(self, line_id: int) -> list[ReviewDecision]:
+        """The line's review decisions, oldest first."""
+        with connect(self.db_path) as conn:
+            rows = conn.execute(
+                """SELECT rd.*, rd.source_path AS source FROM review_decisions rd
+                   JOIN documents d ON d.source_path = rd.source_path
+                   JOIN quotations q ON q.document_id = d.id
+                   JOIN quotation_lines l ON l.quotation_id = q.id AND l.line_no = rd.line_no
+                   WHERE l.id = ?
+                   ORDER BY rd.id""",
+                (line_id,),
+            ).fetchall()
+        return [
+            ReviewDecision(
+                **{
+                    **dict(r),
+                    "old_value": _json(r["old_value"]),
+                    "new_value": _json(r["new_value"]),
+                }
+            )
+            for r in rows
+        ]
+
     def _lines(self, clause: str, params: dict | None = None) -> list[tuple[LineView, dict]]:
         with connect(self.db_path) as conn:
             rows = conn.execute(_LINES_QUERY + clause, params or {}).fetchall()
@@ -227,5 +275,16 @@ class ReadModel:
             for col in ("active_ingredients", "price_tiers", "evidence", "review_reasons"):
                 row[col] = json.loads(row[col])
             row["inns"] = [i["inn"] for i in row["active_ingredients"]]
+            decisions = json.loads(row.pop("decisions"))
+            row["approved"] = bool(decisions) and decisions[-1]["action"] == "approve"
+            corrections = {
+                d["field"]: d["new_value"] for d in decisions if d["action"] == "correct"
+            }
+            row["extracted"] = {field: row[field] for field in corrections}
+            row.update(corrections)
             views.append((LineView(**row), row))
         return views
+
+
+def _json(value: str | None) -> object:
+    return None if value is None else json.loads(value)
