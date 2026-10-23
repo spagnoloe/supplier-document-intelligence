@@ -17,17 +17,14 @@ def load_email(path: Path) -> DocumentContent:
     # body is kept so the model doesn't see every line twice. Plain text is preferred as
     # the sender's own rendering; HTML is the fallback for HTML-only mail.
     body = message.get_body(preferencelist=("plain", "html"))
-    if body is None:
-        text = ""
-    elif body.get_content_subtype() == "html":
-        text = html_to_text(body.get_content())
-    else:
-        text = body.get_content()
-    header_block = "\n".join(f"{name}: {message[name]}" for name in HEADERS if message[name])
+    sections = ["\n".join(f"{name}: {message[name]}" for name in HEADERS if message[name])]
+    if body is not None:
+        content = body.get_content()
+        sections.append(html_to_text(content) if body.get_content_subtype() == "html" else content)
     return DocumentContent(
         source_path=str(path),
-        text=f"{header_block}\n\n{text}",
-        metadata={"file_type": "eml", "body_type": body.get_content_type() if body else None},
+        text="\n\n".join(sections),
+        metadata={"file_type": "eml"},
     )
 
 

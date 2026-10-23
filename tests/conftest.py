@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import date
+from email.message import EmailMessage
 from pathlib import Path
 
 import pytest
@@ -82,6 +83,22 @@ def make_text_pdf(*lines: str) -> bytes:
     out += "".join(f"{offset:010d} 00000 n \n" for offset in offsets)
     out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n"
     return out.encode("latin-1")
+
+
+def make_email(plain: str | None, html: str | None) -> bytes:
+    message = EmailMessage()
+    message["From"] = "Sales <sales@synthetic.example>"
+    message["To"] = "buyer@example.com"
+    message["Date"] = "Tue, 04 Aug 2026 16:42:11 +0200"
+    message["Subject"] = "RE: RFQ-1 quotation"
+    if plain is not None:
+        message.set_content(plain)
+    if html is not None:
+        if plain is None:
+            message.set_content(html, subtype="html")
+        else:
+            message.add_alternative(html, subtype="html")
+    return message.as_bytes()
 
 
 @pytest.fixture

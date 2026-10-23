@@ -1,7 +1,12 @@
 import json
-from email.message import EmailMessage
 
-from conftest import FakeExtractor, InMemoryFxSource, make_quotation, make_text_pdf
+from conftest import (
+    FakeExtractor,
+    InMemoryFxSource,
+    make_email,
+    make_quotation,
+    make_text_pdf,
+)
 from langchain_core.exceptions import OutputParserException
 
 from sdi.pipeline import ingest
@@ -119,22 +124,6 @@ def test_text_pdf_reaches_extractor_as_its_text(write_source, store, read_model)
     assert (status.file_type, status.status, status.line_count) == ("pdf", "processed", 1)
 
 
-def make_email(plain: str | None, html: str | None) -> bytes:
-    message = EmailMessage()
-    message["From"] = "Sales <sales@synthetic.example>"
-    message["To"] = "buyer@example.com"
-    message["Date"] = "Tue, 04 Aug 2026 16:42:11 +0200"
-    message["Subject"] = "RE: RFQ-1 quotation"
-    if plain is not None:
-        message.set_content(plain)
-    if html is not None:
-        if plain is None:
-            message.set_content(html, subtype="html")
-        else:
-            message.add_alternative(html, subtype="html")
-    return message.as_bytes()
-
-
 def test_multipart_email_reaches_extractor_as_headers_and_plain_body_once(
     write_source, store, read_model
 ):
@@ -184,3 +173,13 @@ def test_html_only_email_reaches_extractor_as_text_without_markup(write_source, 
     assert "Regards,\nSales" in received.text
     assert "<" not in received.text.split("\n\n", 1)[1]
     assert "color: red" not in received.text
+
+
+def test_pdf_without_text_layer_reaches_extractor_with_no_text(write_source, store):
+    source = write_source("scan.pdf", make_text_pdf())
+    extractor = FakeExtractor({"scan.pdf": make_quotation("Alpha")})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [received] = extractor.received
+    assert received.text is None
