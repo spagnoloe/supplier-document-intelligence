@@ -230,6 +230,28 @@ def test_database_from_an_earlier_schema_keeps_working(db_path, write_source, re
     assert lines["beta"].headline_unit_price == 0.1
 
 
+def test_lines_stored_before_field_verification_open_as_needing_review(
+    db_path, write_source, read_model
+):
+    source = write_source("old.json", "{}")
+    ingest(
+        [source],
+        FakeExtractor({"old.json": make_quotation("Alpha")}),
+        InMemoryFxSource(),
+        Store(db_path),
+    )
+    # A database from before lines were verified: no review status, no field verification.
+    with sqlite3.connect(db_path) as conn:
+        for column in ("verification_status", "review_status", "field_verification"):
+            conn.execute(f"ALTER TABLE quotation_lines DROP COLUMN {column}")
+
+    Store(db_path)
+
+    [line] = read_model.quotation_lines()
+    assert line.review_status == "needs_review"
+    assert read_model.line_detail(line.id).fields == []
+
+
 def test_multi_sheet_workbook_reaches_extractor_as_text_one_row_per_line(
     write_source, store, read_model
 ):
