@@ -62,7 +62,11 @@ def reconcile(lines: Sequence[LineView]) -> tuple[list[ConflictRecord], Reasons]
             f"No {missing}, so this Source isn't linked to other Sources of the same Quotation"
         )
         reasons.append((line.id, ReviewReason(code=code, field=None, message=message)))
-    conflicts = [c for group in quotations.values() for c in _conflicts(_matched(group))]
+    conflicts = []
+    for quotation_lines in quotations.values():
+        groups = _matched(quotation_lines)
+        conflicts += _conflicts(groups)
+        reasons += _unmatched(groups, list(dict.fromkeys(line.source for line in quotation_lines)))
     for conflict in conflicts:
         message = _conflict_message(conflict, {line.id: line for line in lines})
         for line_id in conflict.values:
@@ -119,6 +123,27 @@ def _conflicts(groups: list[list[LineView]]) -> list[ConflictRecord]:
                     )
                 )
     return conflicts
+
+
+def _unmatched(groups: list[list[LineView]], sources: list[str]) -> Reasons:
+    """A note on each line that some linked Source has no line to compare with: a Product
+    key that differs (e.g. a strength one copy couldn't read) would otherwise hide a
+    Conflict. A note only, since a partial copy legitimately lacks lines."""
+    reasons: Reasons = []
+    for group in groups:
+        missing = [Path(s).name for s in sources if s not in {line.source for line in group}]
+        if not missing:
+            continue
+        message = (
+            f"No matching line in {', '.join(missing)}, so this line isn't compared with "
+            "that Source of the same Quotation"
+        )
+        for line in group:
+            reason = ReviewReason(
+                code=ReasonCode.UNMATCHED_IN_QUOTATION, field=None, message=message
+            )
+            reasons.append((line.id, reason))
+    return reasons
 
 
 def _conflict_message(conflict: ConflictRecord, lines: dict[int, LineView]) -> str:

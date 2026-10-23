@@ -305,3 +305,26 @@ def test_placeholder_reference_without_digits_counts_as_missing(write_source, st
     assert read_model.conflicts() == []
     for line in read_model.quotation_lines():
         assert [r.code for r in line.review_reasons] == ["NO_QUOTE_REFERENCE"]
+
+
+def test_line_without_partner_in_a_linked_source_is_noted_without_forcing_review(
+    write_source, store, read_model
+):
+    unreadable_strength = amoxicillin()
+    unreadable_strength.active_ingredients[0].strength_value = None
+    a, b = write_source("a.json", SOURCE), write_source("b.json", SOURCE)
+    quotations = {
+        "a.json": quotation(amoxicillin(), ibuprofen()),
+        "b.json": quotation(unreadable_strength, ibuprofen()),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    lines = {(line.source, line.inns[0]): line for line in read_model.quotation_lines()}
+    clean = lines[(str(a), "amoxicillin")]
+    [note] = [r for r in clean.review_reasons if r.code == "UNMATCHED_IN_QUOTATION"]
+    assert "b.json" in note.message
+    assert clean.review_status == "auto_ok"
+    copy = lines[(str(b), "amoxicillin")]
+    assert "UNMATCHED_IN_QUOTATION" in {r.code for r in copy.review_reasons}
+    for source in (a, b):
+        assert lines[(str(source), "ibuprofen")].review_reasons == []
