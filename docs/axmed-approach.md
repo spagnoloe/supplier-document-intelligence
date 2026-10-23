@@ -169,7 +169,7 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 ## 6. Validation, normalization and review (ADR-0004)
 
 **Derived values** are stored next to the originals, never in their place:
-- the headline Unit and Pack price: as stated on the line, else in the lowest-volume tier (smallest `min_qty`, not the first listed; reason `TIERED_PRICING`), with the missing one calculated from the other and the Pack size. A Pack size the rules reject calculates nothing;
+- the headline Unit and Pack price: as stated on the line, else in the lowest-volume tier (smallest `min_qty`, not the first listed), with the missing one calculated from the other and the Pack size. Any line with tiers gets `TIERED_PRICING`, since its price depends on volume. A Pack size or discount the rules reject calculates and cross-checks nothing;
 - the net-of-discount headline prices, empty when no discount is stated;
 - USD per UOM: the headline Unit price before discount.
 
