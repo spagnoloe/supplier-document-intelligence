@@ -53,6 +53,8 @@ An unknown file extension fails loudly ("no loader for .xyz").
 
 Steps 1–4 are a LangGraph graph per Source, run with `graph.batch()` and a concurrency limit. Step 5 is a plain function, since it isn't a per-document flow.
 
+**Re-runs skip unchanged Sources.** Each stored Source keeps a fingerprint of its content and of the extraction setup it was read with: the models, the prompt and the schema. A re-run reads only Sources whose fingerprint changed, plus those that failed; `--force` reads every Source again, e.g. after a change to validation. Reconciliation still runs over every stored Source. A supplier document doesn't change once received (a revised quote is a new file), so outside development a Source is read again only when the pipeline changes.
+
 ---
 
 ## 3. DocumentContent: the loader output
@@ -287,6 +289,18 @@ Reconciliation never merges or picks a winner.
 - `fx_rates`
 - `review_decisions`: who, when, field, old → new, approve/correct. Extracted values are never overwritten.
 
+**Review decisions:**
+- The current value of a field is its latest correction, else the extracted value. The read model returns current values and keeps each corrected field's extracted value next to it. Headline, net and USD prices are recalculated from current values, using only FX rates ingest already cached, so a correction never fetches or estimates a rate.
+- A line's review status is `reviewed` when its latest decision is an approval, otherwise the pipeline's `needs_review` or `auto_ok`. One column then answers whether a line still needs a human, and reviewed lines leave the `needs_review` queue and count. It's worked out on read, not stored: reconciliation rewrites the stored status on every ingest.
+- A later correction withdraws an approval, since the approval covered other values. So does a Review reason raised after it, e.g. a newly ingested Source of the same Quotation that conflicts with the line: an approval records the reasons the reviewer saw, by code and field, and the line goes back to the pipeline's status when one appears that wasn't among them.
+- Review reasons stay what verification and reconciliation found in the Sources; a correction or approval doesn't clear them, so a reviewed line still shows why it was flagged. The one reason a correction adds is `FX_UNAVAILABLE`, when a corrected currency has no cached rate.
+- A line currency corrected to empty falls back to the Quotation's, as an extracted one does.
+- A decision applies to the reading of the Source it was made on. A re-run leaves an unchanged Source alone (§2), so its decisions stand. A Source read again (new content, models or prompt, or `--force`) starts a fresh review: its earlier decisions stay in the log, marked as no longer current, but aren't applied. Carrying them over was rejected: a new reading can drop, split or reorder lines, so a decision matched by line number could land on another Product, and the values a reviewer approved may no longer be the ones shown.
+- Reconciliation compares extracted values. A correction resolves the line for export; it doesn't make the Sources agree, so the Conflict stays visible.
+- **CSV export** (`sdi export <file.csv>`): one row per line with current values, derived prices, review status, corrected fields, Review reasons, and Source path + line number.
+
+**Known limitation:** reprocessing after a pipeline change means reviewing those Sources again. Production could offer earlier decisions as suggestions where the new reading's line has the same Product and extracted value, for a reviewer to confirm.
+
 **Streamlit UI** (POC; production would be FastAPI + a proper frontend):
 1. **Review queue:** `needs_review` first, filter by supplier, status, Source and reason code.
 2. **Line detail:** fields next to their evidence, and the source image for image lines. Approve, or correct a field.
@@ -343,6 +357,7 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 
 **Run:**
 - `uv run sdi ingest data/`
+- `uv run sdi export lines.csv`
 - `uv run streamlit run app/review.py`
 
 **Secrets:** `.env` holds `GOOGLE_API_KEY`, with a committed `.env.example`.
@@ -383,5 +398,5 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 | Uncertainty signalling | §6, §7, ADR-0004 |
 | Production readiness | Column-mapping cache, provider-agnostic models with fallbacks, paid or no-training tier for PII, FastAPI review app, tracing |
 | CI/CD and infrastructure | Cached eval as regression gate, containerized worker, queue-based scaling |
-| Limitations | Whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching, salt words stripped from a fixed list |
+| Limitations | Reprocessing a Source restarts its review, whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching, salt words stripped from a fixed list |
 | Data model reflection | §5 table |

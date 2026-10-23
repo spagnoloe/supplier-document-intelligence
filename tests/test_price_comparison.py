@@ -289,8 +289,15 @@ def test_rerun_replaces_earlier_price_comparisons(write_source, store, read_mode
     ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
     assert len(read_model.price_comparisons()) == 1
 
+    # b is read again by a new extraction setup, which reads another dosage form.
     syrup = amoxicillin(dosage_form="Syrup")
-    ingest([b], FakeExtractor({"b.json": quotation(syrup, **other)}), InMemoryFxSource(), store)
+    ingest(
+        [b],
+        FakeExtractor({"b.json": quotation(syrup, **other)}),
+        InMemoryFxSource(),
+        store,
+        extraction_version="new",
+    )
 
     assert read_model.price_comparisons() == []
 
