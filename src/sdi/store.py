@@ -11,9 +11,11 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
+from pydantic import BaseModel
+
 from sdi.extraction.schema import Quotation
 from sdi.fx import FxRate
-from sdi.validation import LineVerification
+from sdi.validation import LineVerification, ReviewReason
 
 ProcessingStatus = Literal["processed", "failed", "skipped_unsupported_type"]
 
@@ -58,6 +60,9 @@ CREATE TABLE IF NOT EXISTS quotation_lines (
     price_tiers TEXT NOT NULL,
     revision_note TEXT,
     evidence TEXT NOT NULL,
+    -- verification_status is this Source's own outcome; review_status adds reconciliation.
+    verification_status TEXT NOT NULL
+        CHECK (verification_status IN ('needs_review', 'auto_ok')),
     review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'auto_ok')),
     field_verification TEXT NOT NULL,
     headline_unit_price REAL,
@@ -81,11 +86,33 @@ CREATE TABLE IF NOT EXISTS fx_rates (
 CREATE TABLE IF NOT EXISTS review_reasons (
     id INTEGER PRIMARY KEY,
     line_id INTEGER NOT NULL REFERENCES quotation_lines(id) ON DELETE CASCADE,
+    origin TEXT NOT NULL CHECK (origin IN ('verification', 'reconciliation')),
     code TEXT NOT NULL,
     field TEXT,
     message TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS conflicts (
+    id INTEGER PRIMARY KEY,
+    supplier TEXT,
+    quote_ref TEXT,
+    field TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conflict_values (
+    id INTEGER PRIMARY KEY,
+    conflict_id INTEGER NOT NULL REFERENCES conflicts(id) ON DELETE CASCADE,
+    line_id INTEGER NOT NULL REFERENCES quotation_lines(id) ON DELETE CASCADE,
+    value TEXT NOT NULL
+);
 """
+
+
+class ConflictRecord(BaseModel):
+    """One field that matched lines of one Quotation disagree on, with each line's value."""
+
+    supplier: str | None
+    quote_ref: str | None
+    field: str
+    values: dict[int, object]  # line id → that line's value
 
 
 @contextmanager
@@ -128,13 +155,43 @@ class Store:
                         "quotation_id": quotation_id,
                         "line_no": line_no,
                         **values,
+                        "verification_status": verification.review_status,
                         "review_status": verification.review_status,
                         "field_verification": verification.fields,
                         **verification.prices.model_dump(mode="json"),
                     },
                 )
                 for reason in verification.reasons:
-                    _insert(conn, "review_reasons", {"line_id": line_id, **reason.model_dump()})
+                    _insert_reason(conn, line_id, "verification", reason)
+
+    def save_reconciliation(
+        self, conflicts: list[ConflictRecord], reasons: list[tuple[int, ReviewReason]]
+    ) -> None:
+        """Replace every earlier reconciliation outcome, so a re-ingested Source never leaves
+        stale Conflicts or flags on the lines it was compared with."""
+        with connect(self.db_path) as conn:
+            conn.execute("DELETE FROM conflicts")
+            conn.execute("DELETE FROM review_reasons WHERE origin = 'reconciliation'")
+            conn.execute("UPDATE quotation_lines SET review_status = verification_status")
+            for conflict in conflicts:
+                conflict_id = _insert(conn, "conflicts", conflict.model_dump(exclude={"values"}))
+                for line_id, value in conflict.values.items():
+                    _insert(
+                        conn,
+                        "conflict_values",
+                        {
+                            "conflict_id": conflict_id,
+                            "line_id": line_id,
+                            "value": json.dumps(value),
+                        },
+                    )
+            for line_id, reason in reasons:
+                _insert_reason(conn, line_id, "reconciliation", reason)
+            # A line in a Conflict always needs review (ADR-0004).
+            conn.execute(
+                """UPDATE quotation_lines SET review_status = 'needs_review'
+                   WHERE id IN (SELECT line_id FROM conflict_values)"""
+            )
 
     def fx_rate(self, currency: str, on: date) -> FxRate | None:
         with connect(self.db_path) as conn:
@@ -196,6 +253,12 @@ def _add_missing_columns(conn: sqlite3.Connection) -> None:
             for _, column, column_type, *_ in reference.execute(f"PRAGMA table_info({table})"):
                 if column not in existing:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+
+
+def _insert_reason(
+    conn: sqlite3.Connection, line_id: int, origin: str, reason: ReviewReason
+) -> None:
+    _insert(conn, "review_reasons", {"line_id": line_id, "origin": origin, **reason.model_dump()})
 
 
 def _insert(conn: sqlite3.Connection, table: str, values: dict) -> int:

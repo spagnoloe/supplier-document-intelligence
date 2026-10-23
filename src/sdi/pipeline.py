@@ -13,6 +13,8 @@ from pydantic import ValidationError
 from sdi.extraction.schema import SUPPORTED_DOCUMENT_TYPES, Quotation
 from sdi.fx import FxRate, FxSource
 from sdi.loaders import DocumentContent, NoLoaderError, file_type, load
+from sdi.read_model import ReadModel
+from sdi.reconcile import reconcile
 from sdi.store import Store
 from sdi.validation import LineVerification, verify
 
@@ -86,6 +88,8 @@ def ingest(
     for path, result in zip(sources, results, strict=True):
         if isinstance(result, Exception):
             store.save_failed(str(path), file_type(path), _error_message(result))
+    # Reconciliation spans every stored Source, including those from earlier runs.
+    store.save_reconciliation(*reconcile(ReadModel(store.db_path).quotation_lines()))
 
 
 def _cached(fx_source: FxSource, store: Store) -> FxSource:

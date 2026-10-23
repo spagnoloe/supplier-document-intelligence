@@ -63,6 +63,26 @@ class LineDetail(BaseModel):
     fields: list[FieldDetail]
 
 
+class ConflictValue(BaseModel):
+    line_id: int
+    source: str
+    line_no: int
+    value: object
+
+
+class ConflictView(BaseModel):
+    """One field the Sources of a Quotation disagree on, each Source's value side by side."""
+
+    id: int
+    supplier: str | None
+    quote_ref: str | None
+    field: str
+    inns: list[str]
+    active_ingredients: list[dict]
+    dosage_form: str | None
+    values: list[ConflictValue]
+
+
 _LINES_QUERY = """
     SELECT l.id, d.source_path AS source, q.supplier, q.quote_ref, l.line_no,
            l.brand_name, l.active_ingredients, l.dosage_form, l.uom,
@@ -154,6 +174,43 @@ class ReadModel:
                 )
             )
         return LineDetail(line=view, fields=fields)
+
+    def conflicts(self) -> list[ConflictView]:
+        with connect(self.db_path) as conn:
+            rows = conn.execute(
+                """SELECT c.id, c.supplier, c.quote_ref, c.field, v.line_id, v.value,
+                          d.source_path AS source, l.line_no, l.active_ingredients,
+                          l.dosage_form
+                   FROM conflicts c
+                   JOIN conflict_values v ON v.conflict_id = c.id
+                   JOIN quotation_lines l ON l.id = v.line_id
+                   JOIN quotations q ON q.id = l.quotation_id
+                   JOIN documents d ON d.id = q.document_id
+                   ORDER BY c.id, d.source_path, l.line_no"""
+            ).fetchall()
+        views: dict[int, ConflictView] = {}
+        for r in rows:
+            if r["id"] not in views:
+                ingredients = json.loads(r["active_ingredients"])
+                views[r["id"]] = ConflictView(
+                    id=r["id"],
+                    supplier=r["supplier"],
+                    quote_ref=r["quote_ref"],
+                    field=r["field"],
+                    inns=[i["inn"] for i in ingredients],
+                    active_ingredients=ingredients,
+                    dosage_form=r["dosage_form"],
+                    values=[],
+                )
+            views[r["id"]].values.append(
+                ConflictValue(
+                    line_id=r["line_id"],
+                    source=r["source"],
+                    line_no=r["line_no"],
+                    value=json.loads(r["value"]),
+                )
+            )
+        return list(views.values())
 
     def _lines(self, clause: str, params: dict | None = None) -> list[tuple[LineView, dict]]:
         with connect(self.db_path) as conn:
