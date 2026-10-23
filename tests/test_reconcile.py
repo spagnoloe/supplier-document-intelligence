@@ -27,7 +27,7 @@ SOURCE = json.dumps(
 )
 
 
-def amoxicillin(pack_price: float = 12.5, **overrides) -> QuotationLine:
+def amoxicillin(pack_price: float | None = 12.5, **overrides) -> QuotationLine:
     values = {
         "active_ingredients": [
             ActiveIngredient(
@@ -48,8 +48,9 @@ def amoxicillin(pack_price: float = 12.5, **overrides) -> QuotationLine:
                 "dosage_form": "capsules",
                 "uom": "capsules",
                 "pack_size": "Box of 100",
-                "pack_price": f"{pack_price:.2f}",
+                "pack_price": None if pack_price is None else f"{pack_price:.2f}",
             }.items()
+            if s is not None
         ],
     }
     return QuotationLine(**{**values, **overrides})
@@ -128,3 +129,50 @@ def test_disagreeing_sources_of_one_quotation_are_a_conflict_on_that_field(
         assert amox.review_status == "needs_review"
         assert ("IN_CONFLICT", "pack_price") in {(r.code, r.field) for r in amox.review_reasons}
         assert lines[(str(source), "ibuprofen")].review_status == "auto_ok"
+
+
+def test_agreeing_sources_have_no_conflict_even_when_one_value_is_unreadable(
+    write_source, store, read_model
+):
+    ingest_sources(
+        write_source,
+        store,
+        {
+            "a.json": quotation(amoxicillin(), ibuprofen()),
+            "b.json": quotation(amoxicillin(pack_price=None), ibuprofen()),
+        },
+    )
+
+    assert read_model.conflicts() == []
+    a_lines = [line for line in read_model.quotation_lines() if line.source.endswith("a.json")]
+    assert {line.review_status for line in a_lines} == {"auto_ok"}
+
+
+def test_copies_writing_supplier_and_quote_reference_differently_are_linked(
+    write_source, store, read_model
+):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b = write_source("a.json", text), write_source("b.json", text)
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5)),
+        "b.json": quotation(
+            amoxicillin(15.2), supplier="SYNTHETIC PHARMA LIMITED", quote_ref="sp 77"
+        ),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    [conflict] = read_model.conflicts()
+    assert [v.value for v in conflict.values] == [12.5, 15.2]
+
+
+def test_differing_lines_of_different_quotations_are_not_conflicts(write_source, store, read_model):
+    text = SOURCE.replace("12.50", "12.50 / 15.20")
+    a, b, c = (write_source(name, text) for name in ("a.json", "b.json", "c.json"))
+    quotations = {
+        "a.json": quotation(amoxicillin(12.5)),
+        "b.json": quotation(amoxicillin(15.2), quote_ref="SP-78"),
+        "c.json": quotation(amoxicillin(15.2), supplier="Other Pharma Ltd"),
+    }
+    ingest([a, b, c], FakeExtractor(quotations), InMemoryFxSource(), store)
+
+    assert read_model.conflicts() == []
