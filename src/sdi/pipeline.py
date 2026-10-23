@@ -1,4 +1,8 @@
-"""Ingest: one LangGraph graph per Source (load → extract → validate → store), run as a batch."""
+"""Ingest: one LangGraph graph per Source, run as a batch.
+
+load → extract → validate → [second read] → store. The second read is a conditional edge:
+it runs for image Sources and for Sources with a line whose critical checks failed.
+"""
 
 from collections.abc import Callable, Sequence
 from datetime import date
@@ -16,7 +20,7 @@ from sdi.loaders import DocumentContent, NoLoaderError, file_type, load
 from sdi.read_model import ReadModel
 from sdi.reconcile import reconcile
 from sdi.store import Store
-from sdi.validation import LineVerification, verify
+from sdi.validation import LineVerification, verify, wants_second_read
 
 Extractor = Callable[[DocumentContent], Quotation]
 
@@ -31,8 +35,17 @@ class SourceState(TypedDict, total=False):
     verifications: list[LineVerification]
 
 
-def build_graph(extractor: Extractor, fx_source: FxSource, store: Store, max_attempts: int):
+def build_graph(
+    extractor: Extractor,
+    second_reader: Extractor | None,
+    fx_source: FxSource,
+    store: Store,
+    max_attempts: int,
+):
     fx = _cached(fx_source, store)
+    retry = RetryPolicy(
+        max_attempts=max_attempts, initial_interval=0.1, retry_on=STRUCTURED_OUTPUT_ERRORS
+    )
 
     def load_node(state: SourceState) -> SourceState:
         return {"content": load(Path(state["source_path"]))}
@@ -42,6 +55,19 @@ def build_graph(extractor: Extractor, fx_source: FxSource, store: Store, max_att
 
     def validate_node(state: SourceState) -> SourceState:
         return {"verifications": verify(state["quotation"], state["content"], fx)}
+
+    def after_validate(state: SourceState) -> str:
+        wanted = second_reader is not None and wants_second_read(
+            state["content"], state["verifications"]
+        )
+        return "second_read" if wanted else "store"
+
+    def second_read_node(state: SourceState) -> SourceState:
+        assert second_reader is not None
+        second = second_reader(state["content"])
+        return {
+            "verifications": verify(state["quotation"], state["content"], fx, second_read=second)
+        }
 
     def store_node(state: SourceState) -> SourceState:
         path, quotation = state["source_path"], state["quotation"]
@@ -53,19 +79,15 @@ def build_graph(extractor: Extractor, fx_source: FxSource, store: Store, max_att
 
     graph = StateGraph(SourceState)
     graph.add_node("load", load_node)
-    graph.add_node(
-        "extract",
-        extract_node,
-        retry_policy=RetryPolicy(
-            max_attempts=max_attempts, initial_interval=0.1, retry_on=STRUCTURED_OUTPUT_ERRORS
-        ),
-    )
+    graph.add_node("extract", extract_node, retry_policy=retry)
     graph.add_node("validate", validate_node)
+    graph.add_node("second_read", second_read_node, retry_policy=retry)
     graph.add_node("store", store_node)
     graph.add_edge(START, "load")
     graph.add_edge("load", "extract")
     graph.add_edge("extract", "validate")
-    graph.add_edge("validate", "store")
+    graph.add_conditional_edges("validate", after_validate, ["second_read", "store"])
+    graph.add_edge("second_read", "store")
     graph.add_edge("store", END)
     return graph.compile()
 
@@ -76,10 +98,11 @@ def ingest(
     fx_source: FxSource,
     store: Store,
     *,
+    second_reader: Extractor | None = None,
     max_concurrency: int = 2,
     max_attempts: int = 3,
 ) -> None:
-    graph = build_graph(extractor, fx_source, store, max_attempts)
+    graph = build_graph(extractor, second_reader, fx_source, store, max_attempts)
     inputs = [{"source_path": str(path)} for path in sources]
     results = graph.batch(
         inputs, config={"max_concurrency": max_concurrency}, return_exceptions=True
