@@ -1,0 +1,96 @@
+{
+  "catalogue": {
+    "title": "Institutional Price List - Q3 2026",
+    "issuer": "Ubuntu Health Manufacturing (Pty) Ltd",
+    "issuer_country": "ZA",
+    "issuer_site": "Ekurhuleni, Gauteng, South Africa",
+    "list_reference": "UHM-PL-2026-Q3",
+    "effective_from": "2026-07-01",
+    "effective_to": "2026-09-30",
+    "quotation_currency": "ZAR",
+    "delivery_terms": "EXW Ekurhuleni; DAP quotable on request",
+    "price_note": "Volume tiers apply per line item, per calendar quarter. Prices exclude 15% VAT where applicable.",
+    "contact": "tenders@ubuntuhealth.co.za"
+  },
+  "products": [
+    {
+      "item_code": "UHM-PARA-500",
+      "product_name": "Panadel 500",
+      "inn": "Paracetamol",
+      "strength": "500 mg",
+      "dosage_form": "Tablet",
+      "unit_of_measure": "tablet",
+      "pack": {
+        "units_per_pack": 1000,
+        "description": "Bulk HDPE jar, 1000 tablets"
+      },
+      "price_tiers": [
+        { "tier": 1, "min_packs": 100, "max_packs": 999, "price_per_pack": 41.5 },
+        { "tier": 2, "min_packs": 1000, "max_packs": 4999, "price_per_pack": 37.9 },
+        { "tier": 3, "min_packs": 5000, "max_packs": null, "price_per_pack": 34.2 }
+      ],
+      "lead_time_days": 21,
+      "shelf_life_months": 48,
+      "sahpra_registration": "A45/2.7/0812"
+    },
+    {
+      "item_code": "UHM-CEFTX-1G",
+      "product_name": "Ubucef 1 g",
+      "inn": "Ceftriaxone sodium",
+      "strength": "1 g",
+      "dosage_form": "Powder for solution for injection",
+      "unit_of_measure": "vial",
+      "pack": {
+        "units_per_pack": 10,
+        "description": "10 x 1 g vials with 10 x 10 mL WFI ampoules"
+      },
+      "price_tiers": [
+        { "tier": 1, "min_packs": 500, "max_packs": 4999, "price_per_pack": 178.0 },
+        { "tier": 2, "min_packs": 5000, "max_packs": null, "price_per_pack": 161.5 }
+      ],
+      "lead_time_days": 45,
+      "shelf_life_months": 24,
+      "sahpra_registration": "A48/20.1.1/0331"
+    },
+    {
+      "item_code": "UHM-MISO-200",
+      "product_name": "Misotab 200",
+      "inn": "Misoprostol",
+      "strength": "200 mcg",
+      "dosage_form": "Tablet",
+      "unit_of_measure": "tablet",
+      "pack": {
+        "units_per_pack": 60,
+        "description": "6 x 10 Alu-Alu blister strips"
+      },
+      "price_tiers": [
+        { "tier": 1, "min_packs": 200, "max_packs": 1999, "price_per_pack": 96.75 },
+        { "tier": 2, "min_packs": 2000, "max_packs": null, "price_per_pack": 88.4 }
+      ],
+      "lead_time_days": 35,
+      "shelf_life_months": 24,
+      "storage_note": "Store below 25 C in original packaging; moisture sensitive",
+      "sahpra_registration": "A42/18.9/0104"
+    },
+    {
+      "item_code": "UHM-INSGLA-100",
+      "product_name": "Ubuglar 100",
+      "inn": "Insulin glargine",
+      "strength": "100 IU/mL",
+      "dosage_form": "Solution for injection in pre-filled pen",
+      "unit_of_measure": "pen",
+      "pack": {
+        "units_per_pack": 5,
+        "description": "5 x 3 mL pre-filled pens, cold chain 2-8 C"
+      },
+      "price_tiers": [
+        { "tier": 1, "min_packs": 250, "max_packs": 2499, "price_per_pack": 612.0 },
+        { "tier": 2, "min_packs": 2500, "max_packs": null, "price_per_pack": 559.0 }
+      ],
+      "lead_time_days": 70,
+      "shelf_life_months": 30,
+      "cold_chain_required": true,
+      "sahpra_registration": "A50/21.1/0027"
+    }
+  ]
+}

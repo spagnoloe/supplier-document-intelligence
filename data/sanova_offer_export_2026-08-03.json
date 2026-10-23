@@ -1,0 +1,136 @@
+{
+  "meta": {
+    "source_system": "SanovaERP",
+    "export_version": "2.4.1",
+    "generated_at": "2026-08-03T09:14:22Z",
+    "record_count": 3,
+    "document_class": "OFFER"
+  },
+  "vendor": {
+    "name": "Sanova Laboratories Pvt. Ltd.",
+    "vendor_code": "SNV-0142",
+    "registered_country": "IN",
+    "site_of_manufacture": "Ahmedabad, Gujarat, India",
+    "quality_status": {
+      "who_gmp": true,
+      "last_audit": "2025-11-14",
+      "audited_by": "MHRA"
+    },
+    "commercial_contact": {
+      "name": "Rajiv Menon",
+      "role": "Head of Institutional Business",
+      "email": "r.menon@sanovalabs.in",
+      "phone": "+91 79 4002 8817"
+    }
+  },
+  "offer": {
+    "offer_reference": "SNV/EXP/2026/0771",
+    "offer_date": "2026-08-03",
+    "expiry_date": "2026-10-02",
+    "against_enquiry": "AXMED-RFQ-2026-0231",
+    "price_basis": {
+      "currency": "EUR",
+      "incoterms": "FCA",
+      "named_place": "Mumbai (INBOM)"
+    },
+    "payment_terms": "30% advance with PO, 70% against copy of Bill of Lading",
+    "note_on_pricing": "Unit prices not stated separately; pack price and pack composition given.",
+    "products": [
+      {
+        "sku": "SNV-TLD-90",
+        "trade_name": "Sanotri-TLD",
+        "generic_name": [
+          "Tenofovir disoproxil fumarate",
+          "Lamivudine",
+          "Dolutegravir"
+        ],
+        "strength": {
+          "tenofovir_disoproxil_fumarate_mg": 300,
+          "lamivudine_mg": 300,
+          "dolutegravir_mg": 50
+        },
+        "form": "Film-coated tablet",
+        "packaging": {
+          "primary": "HDPE bottle with desiccant",
+          "units_per_pack": 90,
+          "unit_label": "tablet",
+          "packs_per_shipper": 24
+        },
+        "commercials": {
+          "price_per_pack": 3.15,
+          "minimum_order_quantity_packs": 5000,
+          "lead_time_weeks": 8
+        },
+        "regulatory": {
+          "who_prequalified": true,
+          "pq_number": "HA669",
+          "registered_markets": ["NG", "KE", "TZ", "ZM", "UG"]
+        },
+        "shelf_life_months": 24,
+        "storage": "Below 30 C, protect from moisture"
+      },
+      {
+        "sku": "SNV-RIF-HRZE",
+        "trade_name": "Sanofour Kit",
+        "generic_name": [
+          "Rifampicin",
+          "Isoniazid",
+          "Pyrazinamide",
+          "Ethambutol"
+        ],
+        "strength": {
+          "rifampicin_mg": 150,
+          "isoniazid_mg": 75,
+          "pyrazinamide_mg": 400,
+          "ethambutol_mg": 275
+        },
+        "form": "Dispersible film-coated tablet",
+        "packaging": {
+          "primary": "Alu-Alu blister",
+          "units_per_pack": 672,
+          "unit_label": "tablet",
+          "packs_per_shipper": 4,
+          "pack_note": "Patient kit for one intensive-phase course"
+        },
+        "commercials": {
+          "price_per_pack": 8.42,
+          "minimum_order_quantity_packs": 2000,
+          "lead_time_weeks": 10
+        },
+        "regulatory": {
+          "who_prequalified": true,
+          "pq_number": "TB287",
+          "registered_markets": ["NG", "ET", "GH", "CI"]
+        },
+        "shelf_life_months": 24,
+        "storage": "Below 25 C"
+      },
+      {
+        "sku": "SNV-AMLO-5",
+        "trade_name": "Sanodip 5",
+        "generic_name": ["Amlodipine besylate"],
+        "strength": {
+          "amlodipine_base_mg": 5
+        },
+        "form": "Tablet",
+        "packaging": {
+          "primary": "PVC/Alu blister",
+          "units_per_pack": 30,
+          "unit_label": "tablet",
+          "packs_per_shipper": 100
+        },
+        "commercials": {
+          "price_per_pack": 0.312,
+          "minimum_order_quantity_packs": 40000,
+          "lead_time_weeks": 5
+        },
+        "regulatory": {
+          "who_prequalified": false,
+          "registered_markets": ["IN", "KE", "TZ"]
+        },
+        "shelf_life_months": 36,
+        "storage": "Below 30 C"
+      }
+    ]
+  }
+}
