@@ -8,7 +8,7 @@ Conflict. Nothing is merged and no value wins: the lines go to review instead.
 import json
 import re
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -62,7 +62,7 @@ def reconcile(lines: Sequence[LineView]) -> tuple[list[ConflictRecord], Reasons]
             f"No {missing}, so this Source isn't linked to other Sources of the same Quotation"
         )
         reasons.append((line.id, ReviewReason(code=code, field=None, message=message)))
-    conflicts = [c for group in quotations.values() for c in _conflicts(group)]
+    conflicts = [c for group in quotations.values() for c in _conflicts(_matched(group))]
     for conflict in conflicts:
         message = _conflict_message(conflict, {line.id: line for line in lines})
         for line_id in conflict.values:
@@ -77,19 +77,31 @@ def reconcile(lines: Sequence[LineView]) -> tuple[list[ConflictRecord], Reasons]
     return conflicts, reasons
 
 
-def _conflicts(quotation_lines: list[LineView]) -> list[ConflictRecord]:
-    # A Source may quote one Product more than once (e.g. two pack sizes); its n-th line
-    # for a Product is matched with the n-th of every other Source, in document order.
-    matched: dict[tuple[str, int], list[LineView]] = defaultdict(list)
-    seen: dict[tuple[str, str], int] = defaultdict(int)
+def _matched(quotation_lines: list[LineView]) -> list[list[LineView]]:
+    """Lines of one Quotation grouped by Product, each group at most one line per Source."""
+    by_product: dict[str, dict[str, list[LineView]]] = defaultdict(lambda: defaultdict(list))
     for line in quotation_lines:
-        product = _product_key(line)
-        occurrence = seen[(line.source, product)]
-        seen[(line.source, product)] += 1
-        matched[(product, occurrence)].append(line)
+        by_product[_product_key(line)][line.source].append(line)
+    groups = []
+    for per_source in by_product.values():
+        if all(len(lines) == 1 for lines in per_source.values()):
+            groups.append([lines[0] for lines in per_source.values()])
+            continue
+        # A Source quotes the Product more than once (e.g. two pack sizes): pair lines by
+        # pack size, then by document order among lines with the same or no pack size.
+        by_pack: dict[tuple[float | None, int], list[LineView]] = defaultdict(list)
+        for lines in per_source.values():
+            seen: Counter[float | None] = Counter()
+            for line in lines:
+                by_pack[(line.pack_size, seen[line.pack_size])].append(line)
+                seen[line.pack_size] += 1
+        groups.extend(by_pack.values())
+    return groups
 
+
+def _conflicts(groups: list[list[LineView]]) -> list[ConflictRecord]:
     conflicts = []
-    for group in matched.values():
+    for group in groups:
         if len(group) < 2:
             continue
         for field in COMPARED_FIELDS:

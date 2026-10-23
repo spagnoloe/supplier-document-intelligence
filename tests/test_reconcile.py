@@ -221,7 +221,7 @@ def test_rerun_after_a_source_is_corrected_clears_its_conflict(write_source, sto
     } == {("auto_ok", ())}
 
 
-def test_product_quoted_twice_matches_by_order_not_across_pack_sizes(
+def test_product_quoted_twice_matches_by_pack_size_whatever_the_order(
     write_source, store, read_model
 ):
     text = SOURCE.replace("Box of 100", "Box of 100 / Box of 1000").replace(
@@ -236,8 +236,11 @@ def test_product_quoted_twice_matches_by_order_not_across_pack_sizes(
         ],
     }
     a, b = write_source("a.json", text), write_source("b.json", text)
-    same = quotation(amoxicillin(), amoxicillin(**box_of_1000))
-    ingest([a, b], FakeExtractor({"a.json": same, "b.json": same}), InMemoryFxSource(), store)
+    quotations = {
+        "a.json": quotation(amoxicillin(), amoxicillin(**box_of_1000)),
+        "b.json": quotation(amoxicillin(**box_of_1000), amoxicillin()),
+    }
+    ingest([a, b], FakeExtractor(quotations), InMemoryFxSource(), store)
 
     assert read_model.conflicts() == []
 

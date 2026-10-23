@@ -226,10 +226,11 @@ Both pack images are scans of the Andina PDF, so expected values come from the c
 
 **Conflicts:**
 - Sources are linked to the same Quotation by supplier + quote reference, both normalized: case, accents and punctuation ignored, legal forms (Ltd, S.A., GmbH, ...) dropped from the supplier. In the reference only the separator characters are ignored, not where they fall, so "SP-77" = "sp 77" but "Q1-23" ≠ "Q12-3". A Source with no readable reference stays its own Quotation, with reason `NO_QUOTE_REFERENCE`; one with no supplier likewise, with `NO_SUPPLIER`, since a shared reference alone could belong to two suppliers. Both reasons are notes and don't force review.
-- Lines are matched within a Quotation by Product key (INN + strength set, plus dosage form). A Source quoting one Product more than once (e.g. two pack sizes) has its n-th line for that Product matched with the n-th of the other Sources, in document order.
+- Lines are matched within a Quotation by Product key (INN + strength set, plus dosage form). When a Source quotes one Product more than once (e.g. two pack sizes), its lines for that Product pair by pack size, then by document order among lines with the same or no pack size. A Product quoted once per Source is matched whatever its pack size, so a misread pack size still shows as a Conflict.
 - Matched lines are compared on brand, UOM, pack size, prices, currency, discount, quantity, line total and tiers. A field stated differently becomes a Conflict in `conflicts` / `conflict_values`, with each Source's value, and those lines go to review with `IN_CONFLICT`. A value one Source leaves null (e.g. glare-hidden) isn't a disagreement: verification already flags it, and counting it would push the clean copy into review too.
 - Reconciliation runs at the end of every `ingest` over all stored Sources and replaces its earlier outcome. Lines keep their own `verification_status` next to `review_status`, so a re-ingested Source can't leave stale flags on lines it used to disagree with.
 - Quotation-level terms (Incoterm, validity, RFQ reference) aren't compared yet; a disagreement there isn't tied to one line.
+- A placeholder reference (no digit, e.g. "N/A") counts as missing.
 - In the pack, the Andina PDF and its two scans are three Sources of one Quotation.
 
 **Price comparison:**
