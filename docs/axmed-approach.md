@@ -301,12 +301,15 @@ Reconciliation never merges or picks a winner.
 
 **Known limitation:** reprocessing after a pipeline change means reviewing those Sources again. Production could offer earlier decisions as suggestions where the new reading's line has the same Product and extracted value, for a reviewer to confirm.
 
-**Streamlit UI** (POC; production would be FastAPI + a proper frontend):
-1. **Review queue:** `needs_review` first, filter by supplier, status, Source and reason code.
-2. **Line detail:** fields next to their evidence, and the source image for image lines. Approve, or correct a field.
-3. **Conflicts:** side by side.
+**Streamlit UI** (`app/review.py`; POC, production would be an API service + a proper frontend). It reads only through the read model and writes only `Store.approve` / `Store.correct`, so it holds no business logic and has no unit tests:
+1. **Review queue:** `needs_review` first, filter by supplier, status, Source and reason code; reasons as tags. Selecting a row opens it.
+2. **Line detail:** original and calculated values with FX details, each field's verification and evidence, and the source image for image lines. The image comes from the same loader the pipeline used, so it's what the model saw. Approve, or correct a field; the decision history sits below.
+3. **Conflicts:** each Source's value side by side.
 4. **Price comparison**, with Incoterm warnings.
-5. **CSV export.**
+5. **Source status:** processing status and errors.
+6. **CSV export**, the same file as `sdi export`.
+
+The reviewer types their name in the sidebar; there is no login. Production would take it from authentication.
 
 ---
 
