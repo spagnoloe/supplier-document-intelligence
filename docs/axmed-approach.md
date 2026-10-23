@@ -254,8 +254,11 @@ Line detail gives the Source to show for an image line, the image file or the sc
 - In the pack, the Andina PDF and its two scans are three Sources of one Quotation.
 
 **Price comparison:**
-- Groups lines from different Quotations by INN set + strengths + standardized dosage form, all exact.
-- Shows USD per UOM (before discount, tier 1) with the Incoterm, and warns when Incoterms differ.
+- Groups lines from different Quotations by INN set + strengths + standardized dosage form, all exact. It uses the Product key Conflicts match on. A group needs lines from at least two Quotations. A Source that can't be linked counts as a Quotation of its own.
+- The key drops trailing salt and hydrate words from the INN ("tenofovir disoproxil fumarate" = "tenofovir disoproxil"). The schema asks for the INN without its salt, but on the sample run the model left one on, and the TLD triple didn't group. The stored INN stays as extracted.
+- A line with an unreadable INN, strength or dosage form isn't compared. Two lines missing the same part would share a key without being known to be the same Product.
+- Shows USD per UOM (before discount, tier 1) with each line's Incoterm and place. When the Incoterms differ it warns "not like-for-like", naming each Quotation's term. A Quotation that states no Incoterm also triggers the warning, since what its price includes is unknown. A different place under the same Incoterm doesn't trigger it.
+- Groups are stored next to Conflicts and replaced on every run. A comparison never adds a Review reason or changes a review status.
 
 Overlaps in the pack:
 
@@ -267,6 +270,8 @@ Overlaps in the pack:
 | Paracetamol 500 mg | Ubuntu, Andina |
 
 Salbutamol (inhaler vs syrup) must stay separate.
+
+**Result:** all four overlaps form groups, and each carries the Incoterm warning (FCA vs CIF, FOB vs FCA, CIF vs CIP, FOB vs EXW). The salbutamol inhaler and syrup stay apart. Four more groups come from the Andina family only, because glare made `scan_03` read the reference as `FA-COT-2026-158`. That Source is unlinked, so the system can't tell it's the same Quotation. Matching references fuzzily was rejected (ADR-0003). The group shows one supplier quoting identical prices under two references, which a reviewer can spot. The exact dosage form also costs a pair: `scan_02` read the amoxicillin suspension as "Oral suspension powder", the PDF as "Powder for oral suspension".
 
 Reconciliation never merges or picks a winner.
 
@@ -378,5 +383,5 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 | Uncertainty signalling | §6, §7, ADR-0004 |
 | Production readiness | Column-mapping cache, provider-agnostic models with fallbacks, paid or no-training tier for PII, FastAPI review app, tracing |
 | CI/CD and infrastructure | Cached eval as regression gate, containerized worker, queue-based scaling |
-| Limitations | Whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching |
+| Limitations | Whole-table serialization, no OCR confidence, single-provider second read (correlated misreads), mixed text/scanned PDFs read as text, alternative offers not extracted, exact dosage-form matching, salt words stripped from a fixed list |
 | Data model reflection | §5 table |
