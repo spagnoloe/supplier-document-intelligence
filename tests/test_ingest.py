@@ -44,3 +44,33 @@ def test_malformed_json_source_is_recorded_as_failed(write_source, store, read_m
 
     [status] = read_model.document_statuses()
     assert (status.status, status.file_type) == ("failed", "json")
+
+
+def test_source_with_unregistered_file_type_is_failed_with_no_loader(
+    write_source, store, read_model
+):
+    source = write_source("notes.xyz", "anything")
+    extractor = FakeExtractor({})
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [status] = read_model.document_statuses()
+    assert (status.status, status.error) == ("failed", "no loader for .xyz")
+    assert extractor.received == []
+
+
+def test_non_quotation_document_is_skipped_as_unsupported_type(write_source, store, read_model):
+    source = write_source("confirmation.json", "{}")
+    extractor = FakeExtractor(
+        {"confirmation.json": make_quotation("Alpha", document_type="order_confirmation")}
+    )
+
+    ingest([source], extractor, InMemoryFxSource(), store)
+
+    [status] = read_model.document_statuses()
+    assert (status.status, status.document_type, status.line_count) == (
+        "skipped_unsupported_type",
+        "order_confirmation",
+        0,
+    )
+    assert read_model.quotation_lines() == []

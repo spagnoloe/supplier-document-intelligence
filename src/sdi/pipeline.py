@@ -6,9 +6,9 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from sdi.extraction.schema import Quotation
+from sdi.extraction.schema import SUPPORTED_DOCUMENT_TYPES, Quotation
 from sdi.fx import FxSource
-from sdi.loaders import DocumentContent, file_type, load
+from sdi.loaders import DocumentContent, NoLoaderError, file_type, load
 from sdi.store import Store
 
 Extractor = Callable[[DocumentContent], Quotation]
@@ -28,8 +28,11 @@ def build_graph(extractor: Extractor, store: Store):
         return {"quotation": extractor(state["content"])}
 
     def store_node(state: SourceState) -> SourceState:
-        path = state["source_path"]
-        store.save_processed(path, file_type(Path(path)), state["quotation"])
+        path, quotation = state["source_path"], state["quotation"]
+        if quotation.document_type in SUPPORTED_DOCUMENT_TYPES:
+            store.save_processed(path, file_type(Path(path)), quotation)
+        else:
+            store.save_skipped(path, file_type(Path(path)), quotation.document_type)
         return {}
 
     graph = StateGraph(SourceState)
@@ -59,4 +62,10 @@ def ingest(
     # A failure anywhere in one Source's graph is recorded against that Source only.
     for path, result in zip(sources, results, strict=True):
         if isinstance(result, Exception):
-            store.save_failed(str(path), file_type(path), f"{type(result).__name__}: {result}")
+            store.save_failed(str(path), file_type(path), _describe(result))
+
+
+def _describe(error: Exception) -> str:
+    if isinstance(error, NoLoaderError):
+        return str(error)
+    return f"{type(error).__name__}: {error}"
