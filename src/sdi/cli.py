@@ -40,6 +40,7 @@ def run_ingest(folder: Path) -> None:
         GeminiExtractor(settings.extraction_model),
         fx_source=frankfurter,
         store=Store(settings.db_path),
+        second_reader=GeminiExtractor(settings.second_read_model),
         max_concurrency=settings.max_concurrency,
     )
     ingested = {str(p) for p in sources}

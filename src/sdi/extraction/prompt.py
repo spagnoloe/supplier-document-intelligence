@@ -19,8 +19,9 @@ references, dates, currency, Incoterm) go on the quotation, not on each line.
 value the document does not state, including prices, pack sizes and totals.
 4. If the document corrects itself (a later revision, an erratum, a postscript), return the \
 final corrected value and describe the correction in revision_note.
-5. If a value is unreadable (cropped, blurred, covered, illegible), return null. Never guess \
-it from context or from other lines.
+5. If a value is unreadable (cropped, blurred, covered by glare or a stamp, illegible), return \
+null. Never guess it from context, from other lines or from totals, even when only one value \
+would fit; a reviewer will fill it in.
 6. Ignore alternative products or options mentioned only in passing in notes or comments; \
 extract only what is actually offered.
 7. For every non-null field, add an evidence entry with the exact text copied from the \
