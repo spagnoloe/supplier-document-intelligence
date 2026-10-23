@@ -24,6 +24,7 @@ def run_ingest(folder: Path) -> None:
 
     from sdi.config import load_settings
     from sdi.extraction.gemini import GeminiExtractor
+    from sdi.fx import frankfurter
     from sdi.pipeline import ingest
     from sdi.store import Store
 
@@ -37,7 +38,7 @@ def run_ingest(folder: Path) -> None:
     ingest(
         sources,
         GeminiExtractor(settings.extraction_model),
-        fx_source=lambda currency, on: None,  # FX conversion arrives with derived prices.
+        fx_source=frankfurter,
         store=Store(settings.db_path),
         max_concurrency=settings.max_concurrency,
     )

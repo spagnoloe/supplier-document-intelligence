@@ -1,7 +1,10 @@
 """Calculated prices, arithmetic cross-checks and USD conversion (ADR-0002), observed through
 ingest and the read model."""
 
-from conftest import make_text_pdf
+from datetime import date
+
+import pytest
+from conftest import InMemoryFxSource, make_text_pdf
 from test_review import (
     LINE_EVIDENCE,
     SOURCE,
@@ -15,6 +18,7 @@ from test_review import (
 )
 
 from sdi.extraction.schema import PriceTier
+from sdi.fx import FxRate
 
 
 def test_unit_price_is_calculated_from_a_stated_pack_price(write_source, store, read_model):
@@ -157,3 +161,61 @@ def test_line_total_mismatch_fails_the_fields_involved(write_source, store, read
     assert reason.message == (
         "Quantity 20 × Pack price 1250 less 10% = 22500, but line total is 25000"
     )
+
+
+ISSUED = date(2026, 8, 1)  # a Saturday: the source answers with Friday's rate
+
+
+def eur_quotation():
+    quotation = make_quotation(make_line(), currency="EUR")
+    quotation.issue_date = ISSUED
+    return quotation
+
+
+EUR_SOURCE = SOURCE.replace('"USD"', '"EUR"')
+EUR_RATE = FxRate(rate=1.1, rate_date=date(2026, 7, 31), source="ECB via test")
+
+
+def test_usd_per_uom_uses_the_issue_date_rate(write_source, store, read_model):
+    fx = InMemoryFxSource({("EUR", ISSUED): EUR_RATE})
+    ingest_one(write_source, store, eur_quotation(), EUR_SOURCE, fx=fx)
+
+    [line] = read_model.quotation_lines()
+    assert line.usd_per_uom == pytest.approx(13.75)  # 1250 EUR / 100 capsules × 1.1
+    assert (line.fx_rate, line.fx_rate_date, line.fx_source) == (
+        1.1,
+        date(2026, 7, 31),
+        "ECB via test",
+    )
+    assert line.review_reasons == []
+
+
+def test_rerun_uses_the_cached_rate_without_asking_the_source(write_source, store, read_model):
+    fx = InMemoryFxSource({("EUR", ISSUED): EUR_RATE})
+    ingest_one(write_source, store, eur_quotation(), EUR_SOURCE, fx=fx)
+    offline = InMemoryFxSource()
+
+    ingest_one(write_source, store, eur_quotation(), EUR_SOURCE, fx=offline)
+
+    [line] = read_model.quotation_lines()
+    assert (line.usd_per_uom, line.fx_rate_date) == (pytest.approx(13.75), date(2026, 7, 31))
+    assert offline.requests == []
+
+
+def test_unavailable_rate_leaves_usd_empty_with_a_reason(write_source, store, read_model):
+    ingest_one(write_source, store, eur_quotation(), EUR_SOURCE, fx=InMemoryFxSource())
+
+    [line] = read_model.quotation_lines()
+    assert (line.usd_per_uom, line.fx_rate, line.fx_source) == (None, None, None)
+    assert (line.review_status, reasons_of(line)) == ("auto_ok", {("FX_UNAVAILABLE", None)})
+    [reason] = line.review_reasons
+    assert reason.message == "No EUR→USD rate available for 2026-08-01"
+
+
+def test_usd_price_needs_no_rate(write_source, store, read_model):
+    fx = InMemoryFxSource()
+    ingest_one(write_source, store, make_quotation(make_line()), fx=fx)
+
+    [line] = read_model.quotation_lines()
+    assert (line.usd_per_uom, line.fx_rate) == (12.5, 1.0)
+    assert fx.requests == []

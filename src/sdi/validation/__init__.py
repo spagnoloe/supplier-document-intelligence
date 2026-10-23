@@ -13,9 +13,10 @@ import pycountry
 from pydantic import BaseModel
 
 from sdi.extraction.schema import FieldEvidence, LineField, Quotation, QuotationLine
+from sdi.fx import FxSource
 from sdi.loaders import DocumentContent
 from sdi.validation.evidence import SourceText, numbers_in
-from sdi.validation.pricing import DerivedPrices, derive_prices, headline_tier
+from sdi.validation.pricing import DerivedPrices, convert_to_usd, derive_prices, headline_tier
 
 FieldResult = Literal["verified", "unverified", "failed"]
 ReviewStatus = Literal["needs_review", "auto_ok"]
@@ -35,6 +36,7 @@ class ReasonCode(StrEnum):
     ARITHMETIC_MISMATCH = "ARITHMETIC_MISMATCH"
     REVISION = "REVISION"
     TIERED_PRICING = "TIERED_PRICING"
+    FX_UNAVAILABLE = "FX_UNAVAILABLE"
 
 
 class ReviewReason(BaseModel):
@@ -69,10 +71,10 @@ _NUMBER_TOLERANCE = 1e-9
 _ARITHMETIC_TOLERANCE = 0.01
 
 
-def verify(quotation: Quotation, content: DocumentContent) -> list[LineVerification]:
+def verify(quotation: Quotation, content: DocumentContent, fx: FxSource) -> list[LineVerification]:
     # Without source text (images) the evidence check can't run, so fields stay unverified.
     text = SourceText(content.text) if content.text else None
-    return [_verify_line(line, quotation, text) for line in quotation.lines]
+    return [_verify_line(line, quotation, text, fx) for line in quotation.lines]
 
 
 class _LineChecks:
@@ -122,7 +124,7 @@ class _LineChecks:
 
 
 def _verify_line(
-    line: QuotationLine, quotation: Quotation, text: SourceText | None
+    line: QuotationLine, quotation: Quotation, text: SourceText | None, fx: FxSource
 ) -> LineVerification:
     checks = _LineChecks()
     for field in get_args(LineField):
@@ -136,6 +138,11 @@ def _verify_line(
     _check_rules(checks, line, quotation)
     prices = derive_prices(line)
     _check_arithmetic(checks, line, prices)
+    currency = line.currency or quotation.currency
+    # An absent or invalid currency is already a failed field; there is nothing to convert.
+    if currency is not None and _is_iso_currency(currency):
+        if unavailable := convert_to_usd(prices, currency, quotation.issue_date, fx):
+            checks.note(ReasonCode.FX_UNAVAILABLE, None, unavailable)
     if line.revision_note:
         checks.force_review(ReasonCode.REVISION, None, f"Revised: {line.revision_note}")
     if (tier := headline_tier(line)) is not None:

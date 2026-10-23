@@ -7,10 +7,12 @@ folder never duplicates rows.
 import json
 import sqlite3
 from contextlib import closing, contextmanager
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
 from sdi.extraction.schema import Quotation
+from sdi.fx import FxRate
 from sdi.validation import LineVerification
 
 ProcessingStatus = Literal["processed", "failed", "skipped_unsupported_type"]
@@ -61,7 +63,19 @@ CREATE TABLE IF NOT EXISTS quotation_lines (
     headline_unit_price REAL,
     headline_pack_price REAL,
     net_unit_price REAL,
-    net_pack_price REAL
+    net_pack_price REAL,
+    usd_per_uom REAL,
+    fx_rate REAL,
+    fx_rate_date TEXT,
+    fx_source TEXT
+);
+CREATE TABLE IF NOT EXISTS fx_rates (
+    currency TEXT NOT NULL,
+    requested_date TEXT NOT NULL,
+    rate REAL NOT NULL,
+    rate_date TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (currency, requested_date)
 );
 -- No CHECK on code: new Review reason codes need no schema change.
 CREATE TABLE IF NOT EXISTS review_reasons (
@@ -115,11 +129,27 @@ class Store:
                         **values,
                         "review_status": verification.review_status,
                         "field_verification": verification.fields,
-                        **verification.prices.model_dump(),
+                        **verification.prices.model_dump(mode="json"),
                     },
                 )
                 for reason in verification.reasons:
                     _insert(conn, "review_reasons", {"line_id": line_id, **reason.model_dump()})
+
+    def fx_rate(self, currency: str, on: date) -> FxRate | None:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT rate, rate_date, source FROM fx_rates"
+                " WHERE currency = ? AND requested_date = ?",
+                (currency, on.isoformat()),
+            ).fetchone()
+        return None if row is None else FxRate(**dict(row))
+
+    def save_fx_rate(self, currency: str, on: date, rate: FxRate) -> None:
+        with connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO fx_rates VALUES (?, ?, ?, ?, ?)",
+                (currency, on.isoformat(), rate.rate, rate.rate_date.isoformat(), rate.source),
+            )
 
     def save_skipped(self, source_path: str, file_type: str | None, document_type: str) -> None:
         with connect(self.db_path) as conn:

@@ -208,8 +208,9 @@ def test_line_currency_overrides_and_is_checked_against_line_evidence(
     ingest_one(write_source, store, make_quotation(make_line(spans, currency="EUR")))
 
     [line] = read_model.review_queue()
+    # The Quotation has no issue date, so there is no date to take an EUR rate on.
     assert line.currency == "EUR"
-    assert reasons_of(line) == {("EVIDENCE_NOT_FOUND", "currency")}
+    assert reasons_of(line) == {("EVIDENCE_NOT_FOUND", "currency"), ("FX_UNAVAILABLE", None)}
 
 
 def test_zero_price_fails_as_non_positive(write_source, store, read_model):
