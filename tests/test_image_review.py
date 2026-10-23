@@ -1,7 +1,9 @@
 """Image Sources (ADR-0004): fields can't be evidence-checked, so a critical field must be
 verified by arithmetic or by a second read that agrees, observed through ingest."""
 
+import pytest
 from conftest import FakeExtractor, InMemoryFxSource, make_image
+from langchain_core.exceptions import OutputParserException
 
 from sdi.extraction.schema import (
     ActiveIngredient,
@@ -78,7 +80,7 @@ def test_critical_fields_unverified_on_an_image_force_review(write_source, store
     }
 
 
-def ingest_scan(write_source, store, first: Quotation, second: Quotation):
+def ingest_scan(write_source, store, first: Quotation, second: Quotation | Exception):
     source = write_source("scan.png", make_image())
     second_reader = FakeExtractor({"scan.png": second})
     ingest(
@@ -224,3 +226,26 @@ def test_line_detail_references_the_source_image_only_for_image_lines(
     }
     assert details[str(scan)].source_image == str(scan)
     assert details[str(text)].source_image is None
+
+
+@pytest.mark.parametrize(
+    "error, attempts",
+    [
+        pytest.param(RuntimeError("quota exceeded"), 1, id="model unavailable"),
+        pytest.param(OutputParserException("invalid JSON"), 3, id="malformed every attempt"),
+    ],
+)
+def test_failed_second_read_keeps_the_first_read_with_a_note(
+    write_source, store, read_model, error, attempts
+):
+    second_reader = ingest_scan(write_source, store, make_quotation(make_line()), error)
+
+    [status] = read_model.document_statuses()
+    assert (status.status, status.line_count) == ("processed", 1)
+    [line] = read_model.review_queue()
+    assert line.review_status == "needs_review"
+    assert ("SECOND_READ_UNAVAILABLE", None) in reasons_of(line)
+    assert ("UNVERIFIED_IMAGE_VALUE", "uom") in reasons_of(line)
+    [note] = [r for r in line.review_reasons if r.code == "SECOND_READ_UNAVAILABLE"]
+    assert str(error) in note.message
+    assert len(second_reader.received) == attempts

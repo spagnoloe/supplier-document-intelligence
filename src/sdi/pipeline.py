@@ -43,9 +43,6 @@ def build_graph(
     max_attempts: int,
 ):
     fx = _cached(fx_source, store)
-    retry = RetryPolicy(
-        max_attempts=max_attempts, initial_interval=0.1, retry_on=STRUCTURED_OUTPUT_ERRORS
-    )
 
     def load_node(state: SourceState) -> SourceState:
         return {"content": load(Path(state["source_path"]))}
@@ -64,7 +61,7 @@ def build_graph(
 
     def second_read_node(state: SourceState) -> SourceState:
         assert second_reader is not None
-        second = second_reader(state["content"])
+        second = _second_read(second_reader, state["content"], max_attempts)
         return {
             "verifications": verify(state["quotation"], state["content"], fx, second_read=second)
         }
@@ -85,9 +82,15 @@ def build_graph(
 
     graph = StateGraph(SourceState)
     graph.add_node("load", load_node)
-    graph.add_node("extract", extract_node, retry_policy=retry)
+    graph.add_node(
+        "extract",
+        extract_node,
+        retry_policy=RetryPolicy(
+            max_attempts=max_attempts, initial_interval=0.1, retry_on=STRUCTURED_OUTPUT_ERRORS
+        ),
+    )
     graph.add_node("validate", validate_node)
-    graph.add_node("second_read", second_read_node, retry_policy=retry)
+    graph.add_node("second_read", second_read_node)
     graph.add_node("store", store_node)
     graph.add_edge(START, "load")
     graph.add_edge("load", "extract")
@@ -119,6 +122,23 @@ def ingest(
             store.save_failed(str(path), file_type(path), _error_message(result))
     # Reconciliation spans every stored Source, including those from earlier runs.
     store.save_reconciliation(*reconcile(ReadModel(store.db_path).quotation_lines()))
+
+
+def _second_read(
+    reader: Extractor, content: DocumentContent, max_attempts: int
+) -> Quotation | Exception:
+    """Retried like extraction, but a failure is returned, not raised: the second read only
+    adds confidence, so losing it (e.g. to a quota error) must not lose the first read."""
+    error: Exception | None = None
+    for _ in range(max_attempts):
+        try:
+            return reader(content)
+        except STRUCTURED_OUTPUT_ERRORS as malformed:
+            error = malformed
+        except Exception as unavailable:
+            return unavailable
+    assert error is not None
+    return error
 
 
 def _cached(fx_source: FxSource, store: Store) -> FxSource:

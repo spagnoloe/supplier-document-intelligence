@@ -202,6 +202,7 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
   - A value one read leaves empty confirms nothing and contradicts nothing, as with nulls across Sources. A glare-hidden price stays missing; it doesn't take the other read's guess.
   - Lines pair by position. Reads with different line counts (one read split a row) compare no line and say so: position pairing would then compare the wrong products.
   - The dosage form isn't compared. It's a standardized term the model chooses ("Syrup" or "Oral syrup"), not a value read off the page.
+  - A second read that fails (a quota error, or malformed output on every retry) leaves the first read standing, with the note `SECOND_READ_UNAVAILABLE`. It only adds confidence, so losing it mustn't lose the Source; an image line it would have verified stays in review via `UNVERIFIED_IMAGE_VALUE`.
 
 **`needs_review` when:**
 - a critical field (price, currency, pack size, UOM, ingredients/strength) is failed, or is unverified on an image Source (`UNVERIFIED_IMAGE_VALUE`). An image Source is one the model read as images: a photo or a scanned PDF;

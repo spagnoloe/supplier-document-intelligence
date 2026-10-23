@@ -49,6 +49,7 @@ class ReasonCode(StrEnum):
     FX_UNAVAILABLE = "FX_UNAVAILABLE"
     UNVERIFIED_IMAGE_VALUE = "UNVERIFIED_IMAGE_VALUE"
     SECOND_READ_DISAGREEMENT = "SECOND_READ_DISAGREEMENT"
+    SECOND_READ_UNAVAILABLE = "SECOND_READ_UNAVAILABLE"
     # Raised by reconciliation across Sources, not by verification of one Source.
     IN_CONFLICT = "IN_CONFLICT"
     NO_QUOTE_REFERENCE = "NO_QUOTE_REFERENCE"
@@ -96,15 +97,15 @@ def verify(
     quotation: Quotation,
     content: DocumentContent,
     fx: FxSource,
-    second_read: Quotation | None = None,
+    second_read: Quotation | Exception | None = None,
 ) -> list[LineVerification]:
     """Verify each line of the first read. With a second read, each image line, and each
     line whose critical checks failed, is compared with the second read's line in the same
-    position."""
+    position. A second read that failed (an exception) leaves those lines with a note."""
     # Without source text (images) the evidence check can't run, so fields stay unverified.
     text = SourceText(content.text) if content.text else None
     image = bool(content.images)
-    reread = _SecondRead(second_read, len(quotation.lines)) if second_read else None
+    reread = None if second_read is None else _SecondRead(second_read, len(quotation.lines))
     return [
         _verify_line(line, n, quotation, text, image, reread, fx)
         for n, line in enumerate(quotation.lines)
@@ -165,17 +166,23 @@ class _LineChecks:
 
 
 class _SecondRead:
-    """The second read's lines, paired with the first read's by position. Reads with a
-    different number of lines can't be paired that way, so no line is compared."""
+    """The second read's lines, paired with the first read's by position. When it failed,
+    or has a different number of lines, no line can be paired, and `skipped` says why."""
 
-    def __init__(self, quotation: Quotation, first_count: int):
-        self.quotation = quotation
-        self.mismatch = (
-            None
-            if len(quotation.lines) == first_count
-            else f"Second read found {len(quotation.lines)} lines, first read {first_count}; "
-            "lines weren't compared"
-        )
+    def __init__(self, outcome: Quotation | Exception, first_count: int):
+        self.quotation = outcome if isinstance(outcome, Quotation) else None
+        self.skipped: tuple[ReasonCode, str] | None = None
+        if isinstance(outcome, Exception):
+            self.skipped = (
+                ReasonCode.SECOND_READ_UNAVAILABLE,
+                f"Second read failed ({type(outcome).__name__}: {outcome}); lines weren't compared",
+            )
+        elif len(outcome.lines) != first_count:
+            self.skipped = (
+                ReasonCode.SECOND_READ_DISAGREEMENT,
+                f"Second read found {len(outcome.lines)} lines, first read {first_count}; "
+                "lines weren't compared",
+            )
 
 
 def _verify_line(
@@ -229,9 +236,10 @@ def _check_second_read(
     """A field both reads give the same value is verified; one they give differently fails,
     since at least one read misread it. A value one read leaves empty (unreadable) is
     neither: nothing confirms it, and nothing contradicts it."""
-    if reread.mismatch:
-        checks.note(ReasonCode.SECOND_READ_DISAGREEMENT, None, reread.mismatch)
+    if reread.skipped:
+        checks.note(reread.skipped[0], None, reread.skipped[1])
         return
+    assert reread.quotation is not None  # a read that failed is skipped
     other = reread.quotation.lines[n]
     for field in _SECOND_READ_FIELDS:
         first, _ = _field_value(line, quotation, field)
