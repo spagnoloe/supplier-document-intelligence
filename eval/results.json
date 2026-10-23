@@ -425,13 +425,13 @@
       },
       "flagging": {
         "wrong": 21,
-        "flagged": 6
+        "flagged": 11
       },
       "review_load": {
         "lines": 12,
         "needs_review": 12,
         "fields": 115,
-        "flagged_fields": 62,
+        "flagged_fields": 67,
         "correct_fields": 75,
         "flagged_correct_fields": 32
       }
@@ -514,13 +514,13 @@
     },
     "flagging": {
       "wrong": 22,
-      "flagged": 6
+      "flagged": 11
     },
     "review_load": {
       "lines": 43,
       "needs_review": 21,
       "fields": 388,
-      "flagged_fields": 74,
+      "flagged_fields": 79,
       "correct_fields": 301,
       "flagged_correct_fields": 40
     }
@@ -594,7 +594,7 @@
       "field": "quantity",
       "expected": null,
       "actual": 46.0,
-      "flagged": false
+      "flagged": true
     },
     {
       "source": "scan_03_glare_partial_andina_p1.jpg",
@@ -626,7 +626,7 @@
       "field": "quantity",
       "expected": null,
       "actual": 22.0,
-      "flagged": false
+      "flagged": true
     },
     {
       "source": "scan_03_glare_partial_andina_p1.jpg",
@@ -658,7 +658,7 @@
       "field": "line_total",
       "expected": 41400.0,
       "actual": 41.0,
-      "flagged": false
+      "flagged": true
     },
     {
       "source": "scan_03_glare_partial_andina_p1.jpg",
@@ -666,7 +666,7 @@
       "field": "quantity",
       "expected": 3000000,
       "actual": 3000.0,
-      "flagged": false
+      "flagged": true
     },
     {
       "source": "scan_03_glare_partial_andina_p1.jpg",
@@ -674,7 +674,7 @@
       "field": "line_total",
       "expected": 21090.0,
       "actual": 21.0,
-      "flagged": false
+      "flagged": true
     },
     {
       "source": "scan_03_glare_partial_andina_p1.jpg",

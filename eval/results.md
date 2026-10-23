@@ -49,22 +49,22 @@
 | Source type | Wrong fields flagged |
 |---|---|
 | email | - |
-| image | 6/21 (29%) |
+| image | 11/21 (52%) |
 | json | - |
 | pdf | 0/1 (0%) |
 | spreadsheet | - |
-| all | 6/22 (27%) |
+| all | 11/22 (50%) |
 
 ## 4. Review load
 
 | Source type | Lines needs_review | Fields flagged | Flags on correct fields |
 |---|---|---|---|
 | email | 1/3 (33%) | 1/24 (4%) | 1/18 (6%) |
-| image | 12/12 (100%) | 62/115 (54%) | 32/75 (43%) |
+| image | 12/12 (100%) | 67/115 (58%) | 32/75 (43%) |
 | json | 0/11 (0%) | 0/84 (0%) | 0/70 (0%) |
 | pdf | 5/11 (45%) | 8/105 (8%) | 6/86 (7%) |
 | spreadsheet | 3/6 (50%) | 3/60 (5%) | 1/52 (2%) |
-| all | 21/43 (49%) | 74/388 (19%) | 40/301 (13%) |
+| all | 21/43 (49%) | 79/388 (20%) | 40/301 (13%) |
 
 ## Wrong fields
 
@@ -77,17 +77,17 @@
 | scan_03_glare_partial_andina_p1.jpg | 1 | quantity | null | 52462.0 | **no** |
 | scan_03_glare_partial_andina_p1.jpg | 1 | line_total | 52962.0 | null | **no** |
 | scan_03_glare_partial_andina_p1.jpg | 3 | pack_size | 30 | null | yes |
-| scan_03_glare_partial_andina_p1.jpg | 3 | quantity | null | 46.0 | **no** |
+| scan_03_glare_partial_andina_p1.jpg | 3 | quantity | null | 46.0 | yes |
 | scan_03_glare_partial_andina_p1.jpg | 3 | line_total | 46740.0 | null | **no** |
 | scan_03_glare_partial_andina_p1.jpg | 2 | brand_name | "Amlodin 5" | "Ambodin 5" | **no** |
 | scan_03_glare_partial_andina_p1.jpg | 2 | discount_pct | 3.0 | 5.0 | **no** |
-| scan_03_glare_partial_andina_p1.jpg | 2 | quantity | null | 22.0 | **no** |
+| scan_03_glare_partial_andina_p1.jpg | 2 | quantity | null | 22.0 | yes |
 | scan_03_glare_partial_andina_p1.jpg | 2 | line_total | 22348.8 | null | **no** |
 | scan_03_glare_partial_andina_p1.jpg | 4 | discount_pct | 0.0 | null | **no** |
 | scan_03_glare_partial_andina_p1.jpg | 4 | quantity | 120000 | 120.0 | **no** |
-| scan_03_glare_partial_andina_p1.jpg | 4 | line_total | 41400.0 | 41.0 | **no** |
-| scan_03_glare_partial_andina_p1.jpg | 5 | quantity | 3000000 | 3000.0 | **no** |
-| scan_03_glare_partial_andina_p1.jpg | 5 | line_total | 21090.0 | 21.0 | **no** |
+| scan_03_glare_partial_andina_p1.jpg | 4 | line_total | 41400.0 | 41.0 | yes |
+| scan_03_glare_partial_andina_p1.jpg | 5 | quantity | 3000000 | 3000.0 | yes |
+| scan_03_glare_partial_andina_p1.jpg | 5 | line_total | 21090.0 | 21.0 | yes |
 | scan_03_glare_partial_andina_p1.jpg | 6 | unit_price | 0.412 | 0.432 | yes |
 | scan_03_glare_partial_andina_p1.jpg | 6 | discount_pct | 0.0 | 10.0 | yes |
 | scan_03_glare_partial_andina_p1.jpg | 6 | quantity | 90000 | 90.0 | yes |
