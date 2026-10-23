@@ -1,7 +1,8 @@
 """Evidence check: is a verbatim span really in the source text?
 
 Spans and text are compared after normalization, so a span still matches when the model
-changed only whitespace, letter case or how a number is written ("1,250.00" = "1250").
+changed only whitespace, quoting, letter case or how a number is written
+("1,250.00" = "1250", `"min_qty": 10` = `min_qty: 10`).
 """
 
 import re
@@ -9,19 +10,26 @@ import unicodedata
 from decimal import Decimal
 
 _NUMBER = re.compile(r"\d+(?:[.,']\d+)*")
-_WHITESPACE = re.compile(r"\s+")
+_IGNORED = re.compile(r"[\s\"'`\u2018\u2019\u201c\u201d]+")
 
 
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).casefold()
     # Numbers are fenced so a span "25" can't match inside "1250".
     text = _NUMBER.sub(lambda m: f"#{_canonical(m.group())}#", text)
-    return _WHITESPACE.sub("", text)
+    return _IGNORED.sub("", text)
 
 
-def span_in_text(span: str, normalized_text: str) -> bool:
-    needle = normalize(span)
-    return bool(needle) and needle in normalized_text
+class SourceText:
+    """A Source's text, normalized once for every span checked against it."""
+
+    def __init__(self, text: str):
+        self._normalized = normalize(text)
+        self.numbers = numbers_in(text)
+
+    def contains(self, span: str) -> bool:
+        needle = normalize(span)
+        return bool(needle) and needle in self._normalized
 
 
 def numbers_in(span: str) -> set[Decimal]:

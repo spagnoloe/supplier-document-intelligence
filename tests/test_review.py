@@ -377,3 +377,64 @@ def test_cli_summary_shows_lines_needing_review_per_source(write_source, store, 
     header, row = format_summary(read_model.document_statuses()).splitlines()
     assert header.split()[:4] == ["STATUS", "LINES", "REVIEW", "SOURCE"]
     assert row.split()[:4] == ["processed", "3", "1", "offer.json"]
+
+
+TIERED_SOURCE = json.dumps(
+    {
+        "currency": "USD",
+        "items": [
+            {
+                "ingredient": "Amoxicillin",
+                "strength": "500 mg",
+                "form": "hard capsules",
+                "pack": "Box of 100",
+                "tiers": [
+                    {"min_packs": 1, "max_packs": 49, "price_per_pack": 12.5},
+                    {"min_packs": 50, "max_packs": None, "price_per_pack": 11.0},
+                ],
+            }
+        ],
+    }
+)
+
+TIERED_EVIDENCE = {
+    "active_ingredients": "Amoxicillin",
+    "dosage_form": "hard capsules",
+    "uom": "capsules",
+    "pack_size": "Box of 100",
+    # The model quotes one tier, and drops the JSON quoting.
+    "price_tiers": "min_packs: 1, max_packs: 49, price_per_pack: 12.5",
+}
+
+
+def tiered_line(second_tier_min_qty: float = 50) -> QuotationLine:
+    tiers = [
+        PriceTier(min_qty=1, max_qty=49, pack_price=12.5),
+        PriceTier(min_qty=second_tier_min_qty, pack_price=11.0),
+    ]
+    return make_line(TIERED_EVIDENCE, pack_price=None, price_tiers=tiers)
+
+
+def test_list_entries_verify_against_numbers_anywhere_in_the_source(
+    write_source, store, read_model
+):
+    ingest_one(write_source, store, make_quotation(tiered_line()), TIERED_SOURCE)
+
+    [line] = read_model.review_queue()
+    assert (line.review_status, line.review_reasons) == ("auto_ok", [])
+    results = results_of(read_model, line)
+    assert (results["active_ingredients"], results["price_tiers"]) == ("verified", "verified")
+
+
+def test_list_entry_number_absent_from_the_source_fails_evidence(write_source, store, read_model):
+    # 50 packs converted to 5000 capsules: a value the document never states.
+    quotation = make_quotation(tiered_line(second_tier_min_qty=5000))
+    ingest_one(write_source, store, quotation, TIERED_SOURCE)
+
+    [line] = read_model.review_queue()
+    assert (line.review_status, reasons_of(line)) == (
+        "needs_review",
+        {("EVIDENCE_NOT_FOUND", "price_tiers")},
+    )
+    [reason] = line.review_reasons
+    assert reason.message == "5000 not found in source text"

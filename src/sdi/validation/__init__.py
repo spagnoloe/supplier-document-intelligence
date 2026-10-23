@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from sdi.extraction.schema import FieldEvidence, LineField, Quotation, QuotationLine
 from sdi.loaders import DocumentContent
-from sdi.validation.evidence import normalize, numbers_in, span_in_text
+from sdi.validation.evidence import SourceText, numbers_in
 
 FieldResult = Literal["verified", "unverified", "failed"]
 ReviewStatus = Literal["needs_review", "auto_ok"]
@@ -55,7 +55,7 @@ _NUMBER_TOLERANCE = 1e-9
 
 def verify(quotation: Quotation, content: DocumentContent) -> list[LineVerification]:
     # Without source text (images) the evidence check can't run, so fields stay unverified.
-    text = normalize(content.text) if content.text else None
+    text = SourceText(content.text) if content.text else None
     return [_verify_line(line, quotation, text) for line in quotation.lines]
 
 
@@ -95,7 +95,9 @@ class _LineChecks:
         return LineVerification(fields=self.fields, reasons=self.reasons, review_status=status)
 
 
-def _verify_line(line: QuotationLine, quotation: Quotation, text: str | None) -> LineVerification:
+def _verify_line(
+    line: QuotationLine, quotation: Quotation, text: SourceText | None
+) -> LineVerification:
     checks = _LineChecks()
     for field in get_args(LineField):
         value, evidence = _field_value(line, quotation, field)
@@ -122,27 +124,28 @@ def _field_value(
 
 
 def _check_evidence(
-    checks: _LineChecks, field: str, value: object, evidence: list[FieldEvidence], text: str
+    checks: _LineChecks, field: str, value: object, evidence: list[FieldEvidence], text: SourceText
 ) -> None:
     spans = [e.span for e in evidence if e.span]
     if not spans:
         checks.failed(field, ReasonCode.EVIDENCE_NOT_FOUND, f"No evidence given for {field}")
         return
-    missing = [span for span in spans if not span_in_text(span, text)]
+    missing = [span for span in spans if not text.contains(span)]
     if missing:
         checks.failed(
             field, ReasonCode.EVIDENCE_NOT_FOUND, f"'{missing[0]}' not found in source text"
         )
         return
-    # A real span can still back the wrong number: the value must be written in it.
-    written = numbers_in(" ".join(spans))
+    # A real span can still back the wrong number, so the value must be written in it. List
+    # entries (strengths, tiers) are rarely all in one span, so their numbers need only be
+    # written somewhere in the Source; that still catches values the model computed.
+    if isinstance(value, list):
+        written, where = text.numbers, "source text"
+    else:
+        written, where = numbers_in(" ".join(spans)), f"its evidence '{' / '.join(spans)}'"
     for number in _numbers(value):
         if not any(_close(float(w), number) for w in written):
-            checks.failed(
-                field,
-                ReasonCode.EVIDENCE_NOT_FOUND,
-                f"{number:g} not in its evidence '{' / '.join(spans)}'",
-            )
+            checks.failed(field, ReasonCode.EVIDENCE_NOT_FOUND, f"{number:g} not found in {where}")
             return
     checks.verified(field)
 
