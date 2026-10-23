@@ -12,6 +12,7 @@ dependencies = [
     "langchain-google-genai>=4.4.2",
     "langgraph>=1.2.16",
     "pdfplumber>=0.11.10",
+    "pycountry>=26.2.16",
     "pydantic>=2.14.1",
     "python-dotenv>=1.2.4",
 ]

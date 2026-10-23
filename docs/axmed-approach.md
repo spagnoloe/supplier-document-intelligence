@@ -189,11 +189,11 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 | failed | contradicted by a check, null or unreadable, or rule broken (invalid ISO currency, price ≤ 0) |
 
 **Checks:**
-- **Evidence check** (text sources).
+- **Evidence check** (text sources). Span and text are compared after normalizing whitespace, quote marks, case and number formatting (`1,250.00` = `1250` = `1.250,00`); numbers are matched whole, so `25` never matches inside `1250`. A real span can still back a wrong number, so a numeric value must also be written in its own span. Numbers inside list entries (strengths, tier rows) need only be written somewhere in the Source: the model gives one span per field, which rarely covers every entry. That still catches computed values, e.g. tier quantities converted from packs to units.
 - **Arithmetic checks**, within tolerance:
   - unit × pack_size ≈ pack_price
   - qty × unit × (1 − discount) ≈ line_total
-- **Rule checks.**
+- **Rule checks.** ISO 4217 currency (`INVALID_CURRENCY`), price > 0 (`NON_POSITIVE_PRICE`), critical field present (`MISSING_CRITICAL_FIELD`), and plausible magnitude (`IMPLAUSIBLE_VALUE`: pack size a positive whole number, discount within 0–100%, positive quantity, line total and strength).
 - **Second-read agreement** (images and failed lines).
 
 **`needs_review` when:**
@@ -201,9 +201,9 @@ Evidence and certainty were first sketched as `dict[field, ...]` maps. They are 
 - the line is in a Conflict;
 - the line has a `revision_note`.
 
-`certainty: inferred` adds a review reason but doesn't force review on its own.
+`certainty: inferred` adds a review reason (`INFERRED_VALUE`) but doesn't force review on its own. `certainty: unclear` means partly unreadable, so the field fails (`UNCLEAR_VALUE`), like a null.
 
-**Review reasons** are stable codes plus messages, e.g. `{code: "EVIDENCE_NOT_FOUND", field: "unit_price", message: "0.134 not found in source text"}`. The UI filters by code and the eval counts them.
+**Review reasons** are stable codes plus messages, e.g. `{code: "EVIDENCE_NOT_FOUND", field: "unit_price", message: "0.134 not found in source text"}`. The UI filters by code and the eval counts them. Reasons are rows in a `review_reasons` table with an unconstrained `code` column, so a new code needs no schema change.
 
 ---
 
