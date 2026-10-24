@@ -365,7 +365,7 @@ docs/WRITEUP.md  docs/agent-session-summary.md  docs/adr/
 - `uv run sdi ingest data/`
 - `uv run sdi export lines.csv`
 - `uv run sdi eval data samples --cached-only`
-- `uv run streamlit run app/review.py`
+- `uv run streamlit run app/review.py` (opens the committed `sdi.db`, ingested from `data/` and `samples/`, with no API key needed)
 
 **Secrets:** `.env` holds `GOOGLE_API_KEY`, with a committed `.env.example`.
 
