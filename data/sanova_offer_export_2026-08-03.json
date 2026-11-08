@@ -27,7 +27,7 @@
     "offer_reference": "SNV/EXP/2026/0771",
     "offer_date": "2026-08-03",
     "expiry_date": "2026-10-02",
-    "against_enquiry": "AXMED-RFQ-2026-0231",
+    "against_enquiry": "RFQ-2026-0231",
     "price_basis": {
       "currency": "EUR",
       "incoterms": "FCA",

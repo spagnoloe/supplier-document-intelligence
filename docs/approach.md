@@ -1,4 +1,4 @@
-# Axmed Take-Home: Approach
+# Approach
 
 Document Intelligence Agent: ingest heterogeneous supplier documents, extract Quotation lines into a common schema, flag uncertainty, and hand results to a human reviewer.
 
