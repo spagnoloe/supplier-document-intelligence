@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Take-home for Axmed: `docs/assignment/ai-engineer-takehome-assignment-v2.md`. Design lives in `docs/axmed-approach.md` and `docs/adr/`; read both before changing architecture.
+Take-home assignment. Design lives in `docs/approach.md` and `docs/adr/`; read both before changing architecture.
 
 ## Commits
 

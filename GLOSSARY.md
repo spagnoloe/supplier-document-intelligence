@@ -1,6 +1,6 @@
 # Supplier Document Intelligence
 
-Turning heterogeneous supplier documents (exports, PDFs, emails, scans) into reviewable quotation records for Axmed's medicines marketplace.
+Turning heterogeneous supplier documents (exports, PDFs, emails, scans) into reviewable quotation records for a medicines marketplace.
 
 ## Documents
 
@@ -9,7 +9,7 @@ One file received from a supplier or customer system (a PDF, JSON export, email,
 _Avoid_: File, input, attachment
 
 **Quotation**:
-A supplier's priced offer to Axmed, identified by supplier + quote reference, with terms that apply to all its lines (currency, Incoterm and its place, issue date, validity, RFQ reference). Price lists count as Quotations.
+A supplier's priced offer to the marketplace, identified by supplier + quote reference, with terms that apply to all its lines (currency, Incoterm and its place, issue date, validity, RFQ reference). Price lists count as Quotations.
 _Avoid_: Quote, offer, proforma (as distinct concepts)
 
 **Quotation line**:

@@ -2,7 +2,7 @@
 
 Reads supplier quotations in any layout (PDF, JSON export, email, scan or photo, Excel), extracts their lines into one schema, checks each value against the document, and hands the result to a human reviewer.
 
-- **Write-up:** [`docs/WRITEUP.md`](docs/WRITEUP.md) (one page). Design detail is in [`docs/axmed-approach.md`](docs/axmed-approach.md) and [`docs/adr/`](docs/adr/); terms are in [`GLOSSARY.md`](GLOSSARY.md).
+- **Write-up:** [`docs/WRITEUP.md`](docs/WRITEUP.md) (one page). Design detail is in [`docs/approach.md`](docs/approach.md) and [`docs/adr/`](docs/adr/); terms are in [`GLOSSARY.md`](GLOSSARY.md).
 - **Output table:** [`output/quotation_lines.csv`](output/quotation_lines.csv), one row per Quotation line from the sample pack in `data/`, with review status, Review reasons and the Source path + line number.
 - **Eval:** [`eval/results.md`](eval/results.md); method in [`eval/README.md`](eval/README.md).
 - **Agent session summary:** [`docs/agent-session-summary.md`](docs/agent-session-summary.md).
